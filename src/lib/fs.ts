@@ -16,6 +16,7 @@ import {
   query,
   where,
   writeBatch,
+  type WriteBatch,
   serverTimestamp,
   Timestamp,
   type DocumentData,
@@ -27,6 +28,7 @@ import { childrenMap, descendantIds, MAX_FILE_CHARS, type FsNode, type NodeType 
 const NODES = "nodes";
 const CONTENTS = "fileContents";
 const BATCH_LIMIT = 400; // Firestore max is 500 writes per batch
+const IMPORT_BATCH = 100; // imports use smaller batches (each file = 2 writes)
 
 function toMs(v: unknown): number | undefined {
   return v instanceof Timestamp ? v.toMillis() : undefined;
@@ -134,4 +136,69 @@ export async function saveContent(id: string, ownerUid: string, content: string)
   batch.set(doc(db, CONTENTS, id), { ownerUid, content, updatedAt: serverTimestamp() });
   batch.update(doc(db, NODES, id), { size: new Blob([content]).size, updatedAt: serverTimestamp() });
   await batch.commit();
+}
+
+// A fresh Firestore id, so an import can wire up parent ids before writing.
+export function newNodeId(): string {
+  return doc(collection(db, NODES)).id;
+}
+
+// Writes many folders/files at once (import). Folders go first; each file's
+// metadata and content are written in the same batch. Throws on the first
+// failed batch; whatever was committed before that stays.
+export async function importNodes(
+  ownerUid: string,
+  folders: Array<{ id: string; parentId: string | null; name: string }>,
+  files: Array<{ id: string; parentId: string | null; name: string; content: string }>
+): Promise<void> {
+  const enc = new TextEncoder();
+  const steps: Array<{ cost: number; write: (b: WriteBatch) => void }> = [];
+
+  // Parents before children (ids were generated top-down, so insertion order already is).
+  for (const f of folders) {
+    steps.push({
+      cost: 1,
+      write: (b) =>
+        b.set(doc(db, NODES, f.id), {
+          ownerUid,
+          parentId: f.parentId,
+          type: "folder",
+          name: f.name,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+    });
+  }
+  for (const f of files) {
+    if (f.content.length > MAX_FILE_CHARS) throw new Error("file-too-large");
+    steps.push({
+      cost: 2,
+      write: (b) => {
+        b.set(doc(db, NODES, f.id), {
+          ownerUid,
+          parentId: f.parentId,
+          type: "file",
+          name: f.name,
+          language: "java",
+          size: enc.encode(f.content).length,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        b.set(doc(db, CONTENTS, f.id), { ownerUid, content: f.content, updatedAt: serverTimestamp() });
+      },
+    });
+  }
+
+  let batch = writeBatch(db);
+  let used = 0;
+  for (const step of steps) {
+    if (used + step.cost > IMPORT_BATCH) {
+      await batch.commit();
+      batch = writeBatch(db);
+      used = 0;
+    }
+    step.write(batch);
+    used += step.cost;
+  }
+  if (used > 0) await batch.commit();
 }

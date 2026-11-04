@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconChevron, IconFile, IconFolder, IconFolderOpen, IconMore } from "@/components/Icons";
 import type { FsNode } from "@/lib/tree";
 
-export type TreeAction = "new-file" | "new-folder" | "rename" | "move" | "delete";
+export type TreeAction = "new-file" | "new-folder" | "import" | "export" | "download" | "rename" | "move" | "delete";
 
 interface Props {
   kids: Map<string | null, FsNode[]>;
@@ -54,7 +54,7 @@ export default function FileTree({ kids, expanded, selectedId, activeId, readOnl
   function openMenu(node: FsNode, el: HTMLElement) {
     const r = el.getBoundingClientRect();
     const width = 190;
-    setMenu({ node, x: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), y: Math.min(r.bottom + 4, window.innerHeight - 200) });
+    setMenu({ node, x: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), y: Math.max(8, Math.min(r.bottom + 4, window.innerHeight - 330)) });
   }
 
   function endDrag() {
@@ -160,7 +160,13 @@ export default function FileTree({ kids, expanded, selectedId, activeId, readOnl
             <>
               <button className="menu__item" role="menuitem" onClick={() => { onAction("new-file", menu.node); setMenu(null); }}>New file here</button>
               <button className="menu__item" role="menuitem" onClick={() => { onAction("new-folder", menu.node); setMenu(null); }}>New folder here</button>
+              <button className="menu__item" role="menuitem" onClick={() => { onAction("import", menu.node); setMenu(null); }}>Import files here…</button>
             </>
+          )}
+          {menu.node.type === "folder" ? (
+            <button className="menu__item" role="menuitem" onClick={() => { onAction("export", menu.node); setMenu(null); }}>Export folder (.zip)</button>
+          ) : (
+            <button className="menu__item" role="menuitem" onClick={() => { onAction("download", menu.node); setMenu(null); }}>Download file</button>
           )}
           {!readOnly && (
             <>

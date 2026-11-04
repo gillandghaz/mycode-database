@@ -12,7 +12,8 @@ import { db } from "@/lib/firebase";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { setAdminSafeMode } from "@/lib/admin";
-import { createNode, deleteNodeTree, loadContent, moveNode, renameNode, saveContent, subscribeNodes } from "@/lib/fs";
+import { createNode, deleteNodeTree, importNodes, loadContent, moveNode, newNodeId, renameNode, saveContent, subscribeNodes } from "@/lib/fs";
+import { downloadBlob, exportFolderZip, formatSkipped, planFromFiles, resolvePlan, textBlob } from "@/lib/transfer";
 import { getTemplate } from "@/lib/templates";
 import {
   byId, childrenMap, depthOf, fileClassName, isSelfOrDescendant, nameTaken, pathOf, subtreeHeight,
@@ -221,8 +222,85 @@ export default function Ide() {
     return sel.type === "folder" ? sel.id : sel.parentId;
   }
 
+  // ---- import / export ----------------------------------------------------
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [report, setReport] = useState<{ title: string; summary: string; lines: string[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const importTargetRef = useRef<FsNode | null>(null);
+
+  // Unsaved editor text wins over what is stored, so an export matches the screen.
+  const textOf = useCallback(async (id: string) => buffersRef.current[id] ?? (await loadContent(id)), []);
+
+  async function exportFolder(node: FsNode) {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    try {
+      const { blob, fileCount } = await exportFolderZip(node, kids, textOf);
+      if (fileCount === 0) flash("That folder has no files to export.");
+      else downloadBlob(blob, `${node.name}.zip`);
+    } catch {
+      flash("Couldn't export that folder. Try again.");
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
+  async function downloadFile(node: FsNode) {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    try {
+      downloadBlob(textBlob(await textOf(node.id)), node.name);
+    } catch {
+      flash("Couldn't download that file. Try again.");
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
+  async function handleImportPicked(list: File[]) {
+    const target = importTargetRef.current;
+    importTargetRef.current = null;
+    const picked = list;
+    if (!target || picked.length === 0 || readOnly) return;
+    if (transferBusy) return flash("Another import or export is still running.");
+    setTransferBusy(true);
+    try {
+      const plan = await planFromFiles(picked);
+      const res = resolvePlan(plan, { baseId: target.id, nodeMap, kids, newId: newNodeId });
+      if (res.files.length > 0 || res.folders.length > 0) {
+        await importNodes(workspaceUid, res.folders, res.files);
+        setExpanded((s) => {
+          const n = new Set(s);
+          n.add(target.id);
+          res.folders.forEach((f) => n.add(f.id));
+          return n;
+        });
+      }
+      const imported = res.files.length + res.folders.length > 0;
+      setReport({
+        title: imported ? "Import finished" : "Nothing was imported",
+        summary: imported
+          ? `Added ${res.files.length} file${res.files.length === 1 ? "" : "s"} and ${res.folders.length} folder${res.folders.length === 1 ? "" : "s"} to “${target.name}”.` +
+            (res.skipped.length ? ` ${res.skipped.length} item${res.skipped.length === 1 ? " was" : "s were"} skipped:` : "")
+          : "Nothing could be added to “" + target.name + "”:",
+        lines: formatSkipped(res.skipped),
+      });
+    } catch (e) {
+      flash((e as Error).message === "file-too-large" ? `A file is too large (max ${MAX_FILE_CHARS.toLocaleString()} characters).` : "Import stopped part-way. Some items may have been added; check the explorer.");
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
   function handleAction(action: TreeAction, node: FsNode) {
+    if (action === "export") return void exportFolder(node);
+    if (action === "download") return void downloadFile(node);
     if (readOnly) return;
+    if (action === "import") {
+      importTargetRef.current = node;
+      fileInputRef.current?.click();
+      return;
+    }
     if (action === "new-file") setDialog({ kind: "new", type: "file", parentId: node.id });
     if (action === "new-folder") setDialog({ kind: "new", type: "folder", parentId: node.id });
     if (action === "rename") setDialog({ kind: "rename", node });
@@ -461,6 +539,7 @@ export default function Ide() {
             <span>{activeNode ? "Java" : ""}</span>
             {readOnly && <span><IconLock size={11} /> read-only</span>}
             <span className="grow" />
+            {transferBusy && <span>working…</span>}
             {notice && <span className="is-err">{notice}</span>}
             {!readOnly && activeNode && (
               <span className={saveState === "error" ? "is-err" : ""}>
@@ -472,6 +551,21 @@ export default function Ide() {
           <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => setLines([])} />
         </main>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".java,.zip,application/zip"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = e.target.files;
+          // Copy first: clearing the input empties the live FileList.
+          const copy = files ? Array.from(files) : [];
+          e.target.value = "";
+          handleImportPicked(copy);
+        }}
+      />
 
       {dialog && <NodeDialog state={dialog} kids={kids} onSubmit={submitDialog} onClose={() => setDialog(null)} />}
       {moving && (
@@ -493,6 +587,19 @@ export default function Ide() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleting(null)}
       />
+
+      <Modal open={!!report} onClose={() => setReport(null)} labelledBy="report-title">
+        <h3 id="report-title">{report?.title}</h3>
+        <p>{report?.summary}</p>
+        {!!report?.lines.length && (
+          <ul style={{ margin: "0 0 12px", paddingLeft: 18, fontSize: 13, color: "var(--text-2)", maxHeight: 220, overflow: "auto", wordBreak: "break-word" }}>
+            {report.lines.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        )}
+        <div className="modal__actions">
+          <button className="btn btn--primary" autoFocus onClick={() => setReport(null)}>OK</button>
+        </div>
+      </Modal>
 
       <Modal open={notAvailable} onClose={() => setNotAvailable(false)} labelledBy="na-title">
         <div className="modal__icon"><IconTerminal size={20} /></div>
