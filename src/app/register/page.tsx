@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser, signInWithPopup, signOut, type User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { validatePassword, validateUsername, validateEmail } from "@/lib/validators";
-import { createUserProfile, isUsernameAvailable, ensureUserProfile } from "@/lib/profile";
+import { createUserProfile, isUsernameAvailable, ensureUserProfile, withSignup } from "@/lib/profile";
+import { isRegistrationOpen } from "@/lib/settings";
 import PasswordInput from "@/components/PasswordInput";
 import AuthRedirect from "@/components/landing/AuthRedirect";
 import Logo, { BrandWord } from "@/components/Logo";
@@ -34,6 +35,16 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checkingOpen, setCheckingOpen] = useState(true);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    // Display only; the server and firestore.rules enforce it for real.
+    isRegistrationOpen()
+      .then(setOpen)
+      .catch(() => setOpen(true))
+      .finally(() => setCheckingOpen(false));
+  }, []);
 
   const pwCheck = validatePassword(password);
   const userCheck = validateUsername(username);
@@ -47,20 +58,32 @@ export default function RegisterPage() {
     if (!pwCheck.valid) return setError(pwCheck.errors[0]);
     if (password !== confirmPassword) return setError("The passwords don't match.");
 
+    const uname = username.trim();
+    const created: { user: User | null } = { user: null };
     setBusy(true);
     try {
-      if (!(await isUsernameAvailable(username))) {
+      if (!(await isUsernameAvailable(uname))) {
         setError("That username is taken. Try another one.");
         return;
       }
-      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      await cred.user.getIdToken(true);
-      await createUserProfile(cred.user, { username, displayName: displayName.trim() || username });
+      // withSignup keeps the background profile self-heal out of the way
+      // while this form creates the profile.
+      await withSignup(async () => {
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        created.user = cred.user;
+        await cred.user.getIdToken(true);
+        // Display name is optional: empty falls back to the username.
+        await createUserProfile(cred.user, { username: uname, displayName: displayName.trim() || uname });
+      });
       router.push("/app");
     } catch (err) {
       console.error("Register error:", err);
+      // Don't leave a half-made account behind (it would block the email).
+      if (created.user) await deleteUser(created.user).catch(() => {});
+      await signOut(auth).catch(() => {});
       const e2 = err as { message?: string; code?: string };
-      if (e2.message === "username-taken") setError("Someone just took that username. Try another one.");
+      if (e2.message === "registration-closed") setError("Sign-ups are currently closed.");
+      else if (e2.message === "username-taken") setError("Someone just took that username. Try another one.");
       else setError(friendlyAuthError(e2.code));
     } finally {
       setBusy(false);
@@ -75,11 +98,34 @@ export default function RegisterPage() {
       await ensureUserProfile(result.user);
       router.push("/app");
     } catch (err) {
-      const code = (err as { code?: string }).code;
-      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") setError(friendlyAuthError(code));
+      const e2 = err as { message?: string; code?: string };
+      if (e2.message === "registration-closed") {
+        await signOut(auth).catch(() => {});
+        setError("Sign-ups are currently closed.");
+      } else if (e2.code !== "auth/popup-closed-by-user" && e2.code !== "auth/cancelled-popup-request") {
+        setError(friendlyAuthError(e2.code));
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  if (checkingOpen) {
+    return <div className="auth-shell"><AuthRedirect /></div>;
+  }
+
+  if (!open) {
+    return (
+      <div className="auth-shell">
+        <AuthRedirect />
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <Link href="/" className="brand" style={{ justifyContent: "center" }}><Logo size={26} /><BrandWord /></Link>
+          <h1>Sign-ups are closed</h1>
+          <p className="sub">New accounts can't be created right now. If you already have an account, you can still sign in.</p>
+          <Link href="/login" className="btn btn--primary btn--block">Go to sign in</Link>
+        </div>
+      </div>
+    );
   }
 
   return (

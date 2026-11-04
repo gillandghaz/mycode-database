@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { adminDeleteUser, listAllUsers, setAdminSafeMode, setUserRole, type AdminUserRow } from "@/lib/admin";
+import { isRegistrationOpen, setRegistrationOpen } from "@/lib/settings";
 import { ConfirmDialog } from "@/components/Modal";
 
 export default function AdminTab() {
@@ -15,6 +16,25 @@ export default function AdminTab() {
   const [confirmSafeOff, setConfirmSafeOff] = useState(false);
   const [toDelete, setToDelete] = useState<AdminUserRow | null>(null);
   const [toggleRole, setToggleRole] = useState<AdminUserRow | null>(null);
+
+  const [regOpen, setRegOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isRegistrationOpen().then(setRegOpen).catch(() => setError("Couldn't load the sign-up setting."));
+  }, []);
+
+  async function changeRegistration(open: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      await setRegistrationOpen(open);
+      setRegOpen(open);
+    } catch {
+      setError("Couldn't change the sign-up setting.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setError("");
@@ -87,14 +107,32 @@ export default function AdminTab() {
           <b>Safe mode: {safeMode ? "ON" : "OFF"}</b>
           <div className="hint-text" style={{ marginTop: 2 }}>
             {safeMode
-              ? "You can view other users' code but not change or delete it."
-              : "You CAN edit and delete other users' code and accounts. Turn safe mode back on when you're done."}
+              ? "You can view other users' code, but not change it, delete users, or change roles."
+              : "You CAN edit other users' code, delete accounts and change roles. Turn safe mode back on when you're done."}
           </div>
         </div>
         <label className="switch" title="Safe mode">
           <input type="checkbox" checked={safeMode} disabled={busy} onChange={(e) => (e.target.checked ? changeSafeMode(true) : setConfirmSafeOff(true))} aria-label="Safe mode" />
           <i />
         </label>
+      </div>
+
+      <div className="card">
+        <h3>Sign-ups</h3>
+        <div className="switch-row" style={{ borderTop: 0, paddingBottom: 0 }}>
+          <div>
+            <strong>Allow new accounts</strong>
+            <span className="hint-text">
+              {regOpen === false
+                ? "Closed: nobody can create an account, by email or Google. Existing users can still sign in."
+                : "Open: anyone can create an account."}
+            </span>
+          </div>
+          <label className="switch" title="Allow new accounts">
+            <input type="checkbox" checked={regOpen !== false} disabled={busy || regOpen === null} onChange={(e) => changeRegistration(e.target.checked)} aria-label="Allow new accounts" />
+            <i />
+          </label>
+        </div>
       </div>
 
       <div className="card">
@@ -120,7 +158,7 @@ export default function AdminTab() {
                       <td>
                         <div className="row-actions">
                           <Link className="btn btn--ghost btn--sm" href={isMe ? "/app" : `/app?user=${u.uid}`}>{isMe ? "My code" : "View code"}</Link>
-                          {!isMe && <button className="btn btn--ghost btn--sm" onClick={() => setToggleRole(u)}>{u.role === "admin" ? "Remove admin" : "Make admin"}</button>}
+                          {!isMe && <button className="btn btn--ghost btn--sm" onClick={() => setToggleRole(u)} disabled={safeMode} title={safeMode ? "Turn safe mode off to change roles" : undefined}>{u.role === "admin" ? "Remove admin" : "Make admin"}</button>}
                           {!isMe && <button className="btn btn--ghost btn--sm" style={{ color: "var(--danger)" }} onClick={() => setToDelete(u)} disabled={safeMode} title={safeMode ? "Turn safe mode off to delete" : undefined}>Delete</button>}
                         </div>
                       </td>

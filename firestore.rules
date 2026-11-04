@@ -28,6 +28,14 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSafeMode', true) == false;
     }
 
+    // Admin switch "Allow new accounts" (settings/app). Read here so a NEW
+    // profile/username is refused by the backend when sign-ups are closed,
+    // not just hidden in the UI. Open by default.
+    function registrationOpen() {
+      return !exists(/databases/$(database)/documents/settings/app) ||
+        get(/databases/$(database)/documents/settings/app).data.get('registrationOpen', true) != false;
+    }
+
     function validUsername(u) {
       return u is string && u.matches('^[a-z0-9_]{3,20}$');
     }
@@ -39,6 +47,7 @@ service cloud.firestore {
       // Signing up. Role is always "user"; promotion to admin is done by hand
       // in the Firebase Console (see README) or by another admin.
       allow create: if isSignedIn()
+        && registrationOpen()
         && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['email', 'username', 'displayName', 'role', 'createdAt'])
         && request.resource.data.role == "user"
@@ -55,8 +64,8 @@ service cloud.firestore {
         && (!('settings' in request.resource.data) || request.resource.data.settings is map);
 
       // Admins can change another account's role (not their own: avoids
-      // accidentally removing the last admin).
-      allow update: if isAdmin()
+      // accidentally removing the last admin). Blocked while safe mode is ON.
+      allow update: if adminCanWrite()
         && request.auth.uid != userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
         && request.resource.data.role in ['user', 'admin'];
@@ -81,10 +90,23 @@ service cloud.firestore {
     match /usernames/{username} {
       allow read: if true;
       allow create: if username.matches('^[a-z0-9_]{3,20}$')
-        && ((isSignedIn() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid)
+        && ((isSignedIn() && registrationOpen() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid)
             || isAdmin());
       allow delete: if isAdmin();
       allow update: if false;
+    }
+
+    // ---- settings/app: public sign-up switch. Readable by anyone (the sign-up
+    // page needs it before login); only admins may write it.
+    match /settings/{docId} {
+      allow read: if true;
+      allow create: if isAdmin() && docId == 'app'
+        && request.resource.data.keys().hasOnly(['registrationOpen'])
+        && request.resource.data.registrationOpen is bool;
+      allow update: if isAdmin() && docId == 'app'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registrationOpen'])
+        && request.resource.data.registrationOpen is bool;
+      allow delete: if false;
     }
 
     // ---- nodes/{id}: folders and file metadata

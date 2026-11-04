@@ -4,6 +4,7 @@
 // /app is still guarded by RequireAuth, and stale hints are cleared as soon as
 // Firebase reports no session.
 export const AUTH_HINT_KEY = "mcd_auth";
+const NOTICE_KEY = "mcd_notice";
 
 export function setAuthHint(loggedIn: boolean): void {
   try {
@@ -19,5 +20,25 @@ export function hasAuthHint(): boolean {
     return localStorage.getItem(AUTH_HINT_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+// One-shot message shown on /login after a forced sign-out
+// (e.g. "Your account has been disabled.").
+export function setAuthNotice(message: string): void {
+  try {
+    sessionStorage.setItem(NOTICE_KEY, message);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+export function takeAuthNotice(): string | null {
+  try {
+    const msg = sessionStorage.getItem(NOTICE_KEY);
+    if (msg) sessionStorage.removeItem(NOTICE_KEY);
+    return msg;
+  } catch {
+    return null;
   }
 }

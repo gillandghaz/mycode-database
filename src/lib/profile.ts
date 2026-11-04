@@ -21,6 +21,27 @@ export interface UserProfile {
   adminSafeMode?: boolean;
 }
 
+// ---- sign-up in progress ---------------------------------------------------
+// Creating an account fires onAuthStateChanged BEFORE the sign-up form has
+// written the profile. Without this guard, the "self-heal" in AuthProvider saw
+// "account without profile" and tried to create one in parallel, which clashed
+// with the real one (permission-denied). While a sign-up form is running,
+// self-heal stays out of the way.
+let signupDepth = 0;
+
+export async function withSignup<T>(fn: () => Promise<T>): Promise<T> {
+  signupDepth += 1;
+  try {
+    return await fn();
+  } finally {
+    signupDepth -= 1;
+  }
+}
+
+export function isSignupInProgress(): boolean {
+  return signupDepth > 0;
+}
+
 // Firestore has no unique constraints. Pattern: use the username as a
 // document ID in a separate "usernames" collection and claim it inside a
 // transaction, so two people can't take the same name at once.
@@ -29,11 +50,24 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
   return !snap.exists();
 }
 
+// Server-side sign-up gate (see /api/auth/gate). Throws
+// Error("registration-closed") when sign-ups are off; the server has then
+// already deleted the brand-new Auth account, so the caller just signs out.
+export async function gateRegistration(user: User): Promise<void> {
+  const idToken = await user.getIdToken();
+  const res = await fetch("/api/auth/gate", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
+  if (res.status === 403) throw new Error("registration-closed");
+  if (!res.ok) throw new Error("gate-failed");
+}
+
 export async function createUserProfile(
   user: User,
   { username, displayName }: { username: string; displayName: string }
 ): Promise<void> {
-  const key = username.toLowerCase();
+  await gateRegistration(user);
+
+  const cleanUsername = username.trim();
+  const key = cleanUsername.toLowerCase();
   const usernameRef = doc(db, "usernames", key);
   const userRef = doc(db, "users", user.uid);
 
@@ -44,7 +78,8 @@ export async function createUserProfile(
     tx.set(userRef, {
       email: user.email,
       username: key,
-      displayName: displayName || username,
+      // Display name is optional: fall back to the username.
+      displayName: displayName.trim() || cleanUsername,
       role: "user", // only an admin can change this later (enforced by rules)
       createdAt: serverTimestamp(),
     });

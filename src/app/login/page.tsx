@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail, signOut } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { ensureUserProfile } from "@/lib/profile";
+import { takeAuthNotice } from "@/lib/auth-hint";
 import PasswordInput from "@/components/PasswordInput";
 import AuthRedirect from "@/components/landing/AuthRedirect";
 import Logo, { BrandWord } from "@/components/Logo";
@@ -36,6 +37,12 @@ export default function LoginPage() {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Message left by a forced sign-out (disabled account, closed sign-ups...).
+  useEffect(() => {
+    const notice = takeAuthNotice();
+    if (notice) setError(notice);
+  }, []);
+
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -60,8 +67,14 @@ export default function LoginPage() {
       await ensureUserProfile(result.user);
       router.push("/app");
     } catch (err) {
-      const code = (err as { code?: string }).code;
-      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") setError(friendlyAuthError(code));
+      const e2 = err as { message?: string; code?: string };
+      if (e2.message === "registration-closed") {
+        // A first-time Google sign-in is a sign-up; the server already removed the new account.
+        await signOut(auth).catch(() => {});
+        setError("Sign-ups are currently closed. Only existing accounts can sign in.");
+      } else if (e2.code !== "auth/popup-closed-by-user" && e2.code !== "auth/cancelled-popup-request") {
+        setError(friendlyAuthError(e2.code));
+      }
     } finally {
       setBusy(false);
     }

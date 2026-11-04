@@ -7,8 +7,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "./firebase";
-import { ensureUserProfile, type UserProfile } from "./profile";
-import { setAuthHint } from "./auth-hint";
+import { ensureUserProfile, isSignupInProgress, type UserProfile } from "./profile";
+import { setAuthHint, setAuthNotice } from "./auth-hint";
 
 interface AuthState {
   user: User | null;
@@ -26,6 +26,17 @@ const AuthContext = createContext<AuthState>({
   safeMode: true,
   loading: true,
 });
+
+// How often a signed-in tab asks the server whether the account is still
+// active (disabled in the Firebase Console, deleted, token revoked).
+const SESSION_CHECK_MS = 15 * 1000;
+
+const MSG_DISABLED = "Your account has been disabled.";
+
+function kickOut(message?: string) {
+  if (message) setAuthNotice(message);
+  signOut(auth).catch(() => {});
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -53,10 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (snap) => {
         const data = snap.exists() ? (snap.data() as UserProfile) : null;
         // Self-heal: an Auth account without a profile (e.g. a signup that died
-        // half-way) gets one created automatically.
-        if (!data && !healed) {
+        // half-way) gets one created automatically. Skipped while a sign-up
+        // form is busy creating that very profile.
+        if (!data && !healed && !isSignupInProgress()) {
           healed = true;
-          ensureUserProfile(user).catch((err) => console.error("Profile self-heal failed:", err));
+          ensureUserProfile(user).catch((err: Error) => {
+            if (err?.message === "registration-closed") kickOut("Sign-ups are currently closed.");
+            else console.error("Profile self-heal failed:", err);
+          });
         }
         setProfile(data);
         setLoading(false);
@@ -70,37 +85,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [user]);
 
-  // Periodic session check: if the account was disabled or the token revoked,
-  // the server answers 401 and we sign out right away.
+  // Session check: if the account was disabled (e.g. in the Firebase Console),
+  // deleted, or its token revoked, the server answers 401 and we sign out
+  // right away, with a message on the login page. Firebase Auth itself refuses
+  // to sign a disabled account in again.
   useEffect(() => {
     if (!user) return;
     let stopped = false;
-    const DEAD = ["auth/user-disabled", "auth/user-token-expired", "auth/user-not-found", "auth/id-token-revoked"];
 
     async function check() {
       if (stopped) return;
       try {
         const idToken = await user!.getIdToken();
         const res = await fetch("/api/auth/session", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
-        if (res.status === 401 && !stopped) signOut(auth).catch(() => {});
+        if (res.status === 401 && !stopped) {
+          const body = await res.json().catch(() => ({}));
+          kickOut(body?.code === "session-revoked" ? MSG_DISABLED : undefined);
+        }
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        if (code && DEAD.includes(code) && !stopped) signOut(auth).catch(() => {});
+        if (stopped) return;
+        if (code === "auth/user-disabled") kickOut(MSG_DISABLED);
+        else if (code === "auth/user-not-found") kickOut("This account no longer exists.");
+        else if (code === "auth/user-token-expired" || code === "auth/id-token-revoked") kickOut("Your session ended. Please sign in again.");
         // plain network error: retry on the next tick
       }
     }
 
-    const onVisible = () => {
+    const tick = () => {
       if (document.visibilityState === "visible") check();
     };
-    const timer = setInterval(check, 60 * 1000);
-    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(tick, SESSION_CHECK_MS);
+    document.addEventListener("visibilitychange", tick);
     window.addEventListener("focus", check);
     check();
     return () => {
       stopped = true;
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", tick);
       window.removeEventListener("focus", check);
     };
   }, [user]);
