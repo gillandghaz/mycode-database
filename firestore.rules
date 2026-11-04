@@ -1,0 +1,142 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // An Auth account that has a profile in users/{uid}. Firebase Auth lets
+    // anyone create empty accounts through its public API; without a profile
+    // such an account may not touch any data.
+    function isMember() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // SAFE MODE. An admin may modify OTHER people's code only after switching
+    // their own safe mode OFF. Safe mode is ON when the field is missing, so a
+    // brand-new admin is read-only by default.
+    function adminCanWrite() {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('adminSafeMode', true) == false;
+    }
+
+    function validUsername(u) {
+      return u is string && u.matches('^[a-z0-9_]{3,20}$');
+    }
+
+    // ---- users/{userId}: profile (email, username, displayName, role, settings, adminSafeMode)
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // Signing up. Role is always "user"; promotion to admin is done by hand
+      // in the Firebase Console (see README) or by another admin.
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['email', 'username', 'displayName', 'role', 'createdAt'])
+        && request.resource.data.role == "user"
+        && validUsername(request.resource.data.username)
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 40;
+
+      // Users may change only their display name and editor settings.
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'settings'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 40
+        && (!('settings' in request.resource.data) || request.resource.data.settings is map);
+
+      // Admins can change another account's role (not their own: avoids
+      // accidentally removing the last admin).
+      allow update: if isAdmin()
+        && request.auth.uid != userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+        && request.resource.data.role in ['user', 'admin'];
+
+      // Admins can rename any account (kept in sync with usernames/{username}).
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username'])
+        && validUsername(request.resource.data.username);
+
+      // An admin's own safe-mode switch.
+      allow update: if isAdmin()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['adminSafeMode'])
+        && request.resource.data.adminSafeMode is bool;
+
+      // No client-side deletes. Account removal goes through
+      // /api/admin/delete-user (Admin SDK), which also checks safe mode.
+      allow delete: if false;
+    }
+
+    // ---- usernames/{username}: guarantees unique usernames
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if username.matches('^[a-z0-9_]{3,20}$')
+        && ((isSignedIn() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid)
+            || isAdmin());
+      allow delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // ---- nodes/{id}: folders and file metadata
+    function validNode(d) {
+      return d.keys().hasAll(['ownerUid', 'parentId', 'type', 'name', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['ownerUid', 'parentId', 'type', 'name', 'language', 'size', 'createdAt', 'updatedAt'])
+        && d.ownerUid is string
+        && d.type in ['file', 'folder']
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 64
+        && (d.parentId == null || (d.parentId is string && d.parentId.size() > 0 && d.parentId.size() <= 40));
+    }
+
+    match /nodes/{nodeId} {
+      // Regular users must query with where("ownerUid", "==", myUid); rules
+      // are not filters, so a broader query would be rejected outright.
+      allow read: if isMember() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+
+      allow create: if isMember() && validNode(request.resource.data)
+        && (request.resource.data.ownerUid == request.auth.uid || adminCanWrite());
+
+      allow update: if isMember() && validNode(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (resource.data.ownerUid == request.auth.uid || adminCanWrite());
+
+      allow delete: if isMember()
+        && (resource.data.ownerUid == request.auth.uid || adminCanWrite());
+    }
+
+    // ---- fileContents/{nodeId}: the code itself (max 200,000 characters)
+    function validContent(d) {
+      return d.keys().hasOnly(['ownerUid', 'content', 'updatedAt'])
+        && d.ownerUid is string
+        && d.content is string && d.content.size() <= 200000;
+    }
+
+    match /fileContents/{nodeId} {
+      allow read: if isMember() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+
+      allow create: if isMember() && validContent(request.resource.data)
+        && (request.resource.data.ownerUid == request.auth.uid || adminCanWrite());
+
+      allow update: if isMember() && validContent(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (resource.data.ownerUid == request.auth.uid || adminCanWrite());
+
+      allow delete: if isMember()
+        && (resource.data.ownerUid == request.auth.uid || adminCanWrite());
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
