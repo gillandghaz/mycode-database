@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail, signOut } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup, sendPasswordResetEmail, getAdditionalUserInfo, type User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
-import { ensureUserProfile } from "@/lib/profile";
+import { ensureUserProfile, discardFailedSignup } from "@/lib/profile";
 import { takeAuthNotice } from "@/lib/auth-hint";
 import PasswordInput from "@/components/PasswordInput";
 import AuthRedirect from "@/components/landing/AuthRedirect";
@@ -62,17 +62,25 @@ export default function LoginPage() {
     setError("");
     setInfo("");
     setBusy(true);
+    let signedIn: User | null = null;
+    let isNew = false;
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      signedIn = result.user;
+      isNew = !!getAdditionalUserInfo(result)?.isNewUser;
       await ensureUserProfile(result.user);
       router.push("/app");
     } catch (err) {
       const e2 = err as { message?: string; code?: string };
+      const popupClosed = e2.code === "auth/popup-closed-by-user" || e2.code === "auth/cancelled-popup-request";
+      // Signed in but the profile step failed: never keep that session.
+      if (signedIn) await discardFailedSignup(signedIn, isNew);
       if (e2.message === "registration-closed") {
-        // A first-time Google sign-in is a sign-up; the server already removed the new account.
-        await signOut(auth).catch(() => {});
+        // A first-time Google sign-in is a sign-up; the new account is removed.
         setError("Sign-ups are currently closed. Only existing accounts can sign in.");
-      } else if (e2.code !== "auth/popup-closed-by-user" && e2.code !== "auth/cancelled-popup-request") {
+      } else if (e2.message === "gate-failed") {
+        setError("Couldn't verify your account right now. Please try again in a moment.");
+      } else if (!popupClosed) {
         setError(friendlyAuthError(e2.code));
       }
     } finally {

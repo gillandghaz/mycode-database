@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createUserWithEmailAndPassword, deleteUser, signInWithPopup, signOut, type User } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser, signInWithPopup, signOut, getAdditionalUserInfo, type User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { validatePassword, validateUsername, validateEmail } from "@/lib/validators";
-import { createUserProfile, isUsernameAvailable, ensureUserProfile, withSignup } from "@/lib/profile";
+import { createUserProfile, isUsernameAvailable, ensureUserProfile, withSignup, discardFailedSignup } from "@/lib/profile";
 import { isRegistrationOpen } from "@/lib/settings";
 import PasswordInput from "@/components/PasswordInput";
 import AuthRedirect from "@/components/landing/AuthRedirect";
@@ -83,6 +83,7 @@ export default function RegisterPage() {
       await signOut(auth).catch(() => {});
       const e2 = err as { message?: string; code?: string };
       if (e2.message === "registration-closed") setError("Sign-ups are currently closed.");
+      else if (e2.message === "gate-failed") setError("Couldn't verify sign-up right now. Please try again in a moment.");
       else if (e2.message === "username-taken") setError("Someone just took that username. Try another one.");
       else setError(friendlyAuthError(e2.code));
     } finally {
@@ -93,16 +94,24 @@ export default function RegisterPage() {
   async function handleGoogleRegister() {
     setError("");
     setBusy(true);
+    let signedIn: User | null = null;
+    let isNew = false;
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      signedIn = result.user;
+      isNew = !!getAdditionalUserInfo(result)?.isNewUser;
       await ensureUserProfile(result.user);
       router.push("/app");
     } catch (err) {
       const e2 = err as { message?: string; code?: string };
+      const popupClosed = e2.code === "auth/popup-closed-by-user" || e2.code === "auth/cancelled-popup-request";
+      // Signed in but the profile step failed: never keep that session.
+      if (signedIn) await discardFailedSignup(signedIn, isNew);
       if (e2.message === "registration-closed") {
-        await signOut(auth).catch(() => {});
         setError("Sign-ups are currently closed.");
-      } else if (e2.code !== "auth/popup-closed-by-user" && e2.code !== "auth/cancelled-popup-request") {
+      } else if (e2.message === "gate-failed") {
+        setError("Couldn't verify sign-up right now. Please try again in a moment.");
+      } else if (!popupClosed) {
         setError(friendlyAuthError(e2.code));
       }
     } finally {

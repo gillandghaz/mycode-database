@@ -1,6 +1,6 @@
 import { doc, getDoc, runTransaction, serverTimestamp, type Timestamp } from "firebase/firestore";
-import type { User } from "firebase/auth";
-import { db } from "./firebase";
+import { deleteUser, signOut, type User } from "firebase/auth";
+import { auth, db } from "./firebase";
 
 export type Role = "user" | "admin";
 
@@ -58,6 +58,15 @@ export async function gateRegistration(user: User): Promise<void> {
   const res = await fetch("/api/auth/gate", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
   if (res.status === 403) throw new Error("registration-closed");
   if (!res.ok) throw new Error("gate-failed");
+}
+
+// Fail closed: when a sign-up/first Google sign-in doesn't complete (sign-ups
+// closed, gate unreachable, ...), don't leave a usable session or an orphan
+// Auth account behind. Only a brand-new account is deleted; an existing one is
+// just signed out.
+export async function discardFailedSignup(user: User | null, isNewAccount: boolean): Promise<void> {
+  if (user && isNewAccount) await deleteUser(user).catch(() => {});
+  await signOut(auth).catch(() => {});
 }
 
 export async function createUserProfile(

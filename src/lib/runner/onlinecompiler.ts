@@ -13,9 +13,23 @@ import { RunnerError, type CodeRunner, type Language, type RunRequest, type RunR
 const ENDPOINT = "https://api.onlinecompiler.io/api/run-code-sync/";
 
 // Compiler ids from GET https://api.onlinecompiler.io/api/compilers/
+// Override without a code change via ONLINECOMPILER_JAVA_COMPILER (Vercel env
+// var) if the id below is ever renamed or retired by the provider.
 const COMPILERS: Record<Language, string> = {
-  java: "openjdk-25",
+  java: (process.env.ONLINECOMPILER_JAVA_COMPILER || "").trim() || "openjdk-25",
 };
+
+// Upstream error bodies can be a string, or an object such as
+// { compiler: ["Invalid compiler"] }. Turn either into readable text.
+function describe(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value).slice(0, 300);
+  } catch {
+    return "";
+  }
+}
 
 interface ApiResponse {
   output?: string;
@@ -41,7 +55,7 @@ export class OnlineCompilerRunner implements CodeRunner {
     const started = Date.now();
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: this.apiKey },
+      headers: { "Content-Type": "application/json", Authorization: this.apiKey.trim() },
       body: JSON.stringify({
         compiler: COMPILERS[req.language],
         code: req.code,
@@ -54,9 +68,12 @@ export class OnlineCompilerRunner implements CodeRunner {
     const data = (await res.json().catch(() => ({}))) as ApiResponse;
 
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) throw new RunnerError(502, "The compiler service rejected the API key.");
+      // Shows up in Vercel > Logs, so a failure is diagnosable. Never log the key.
+      console.error(`onlinecompiler HTTP ${res.status} (compiler=${COMPILERS[req.language]}):`, JSON.stringify(data).slice(0, 500));
+      if (res.status === 401 || res.status === 403) throw new RunnerError(502, "The compiler service rejected the API key. Check ONLINECOMPILER_API_KEY.");
       if (res.status === 429) throw new RunnerError(429, "The compiler is busy or the monthly limit was reached. Try again shortly.");
-      throw new RunnerError(502, String(data.message || data.detail || data.error || `Compiler service error (HTTP ${res.status}).`));
+      const detail = describe(data.message) || describe(data.detail) || describe(data.error);
+      throw new RunnerError(502, detail ? `Compiler service error (HTTP ${res.status}): ${detail}` : `Compiler service error (HTTP ${res.status}).`);
     }
 
     const exitCode = typeof data.exit_code === "number" ? data.exit_code : null;
