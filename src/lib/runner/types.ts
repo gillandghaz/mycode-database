@@ -31,3 +31,13 @@ export class RunnerUnavailableError extends Error {
     super(message);
   }
 }
+
+// The backend answered, but with an error (bad key, quota, busy, ...).
+// /api/run turns it into a readable message for the terminal panel.
+export class RunnerError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}

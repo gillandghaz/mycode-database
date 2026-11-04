@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, readJson, errorResponse, HttpError } from "@/lib/server-auth";
 import { getRunner } from "@/lib/runner";
-import { RunnerUnavailableError, type RunRequest } from "@/lib/runner/types";
+import { RunnerError, RunnerUnavailableError, type RunRequest } from "@/lib/runner/types";
 
 export const maxDuration = 30;
 
@@ -36,8 +36,14 @@ export async function POST(request: Request) {
     }
 
     const req: RunRequest = { language, fileName, code, stdin };
-    const result = await runner.run(req, AbortSignal.timeout(25_000));
-    return NextResponse.json(result);
+    try {
+      const result = await runner.run(req, AbortSignal.timeout(25_000));
+      return NextResponse.json(result);
+    } catch (e) {
+      if (e instanceof RunnerError) throw new HttpError(e.status, e.message, "runner-error");
+      if ((e as Error)?.name === "TimeoutError") throw new HttpError(504, "The compiler took too long to answer.", "runner-timeout");
+      throw new HttpError(502, "Couldn't reach the compiler service.", "runner-error");
+    }
   } catch (err) {
     return errorResponse(err, "run");
   }

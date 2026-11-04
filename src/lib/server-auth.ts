@@ -66,6 +66,13 @@ export async function requireAdmin(request: Request): Promise<{ decoded: Decoded
   return { decoded, safeMode: data?.adminSafeMode !== false };
 }
 
+// Whether new accounts may be created. Read on the server (Admin SDK), never
+// from a browser claim. Open by default when never set.
+export async function isRegistrationOpenServer(): Promise<boolean> {
+  const snap = await adminDb().collection("settings").doc("app").get();
+  return !snap.exists || snap.data()?.registrationOpen !== false;
+}
+
 // JSON body with a size cap (default 64 KB).
 export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<Record<string, unknown>> {
   const declared = Number(request.headers.get("content-length") || 0);
