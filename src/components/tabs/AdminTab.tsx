@@ -168,11 +168,11 @@ export default function AdminTab() {
             </span>
           </div>
           <div className="switch-actions">
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditRun(true)} disabled={runAll === null} title="Choose who can run code">Edit</button>
             <label className="switch" title="Allow everyone to run code">
               <input type="checkbox" checked={runAll !== false} disabled={busy || runAll === null} onChange={(e) => changeRunAll(e.target.checked)} aria-label="Allow everyone to run code" />
               <i />
             </label>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditRun(true)} disabled={runAll === null} title="Choose who can run code">Edit</button>
           </div>
         </div>
       </div>
