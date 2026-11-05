@@ -20,7 +20,7 @@ import {
   byId, childrenMap, depthOf, fileClassName, isSelfOrDescendant, nameTaken, pathOf, subtreeHeight,
   MAX_DEPTH, MAX_FILE_CHARS, type FsNode,
 } from "@/lib/tree";
-import Logo, { BrandWord } from "@/components/Logo";
+import { TopbarBrand } from "@/components/Logo";
 import ProfileMenu from "@/components/ProfileMenu";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import { IconFilePlus, IconFolderPlus, IconMenu, IconPlay, IconClose, IconLock, IconTerminal } from "@/components/Icons";
@@ -443,13 +443,13 @@ export default function Ide() {
     <div className="ide">
       <header className="topbar">
         <button className="icon-btn sidebar-toggle" aria-label="Toggle file explorer" onClick={() => setSidebarOpen((v) => !v)}><IconMenu size={20} /></button>
-        <Link href="/app" className="brand"><Logo size={24} /><BrandWord /></Link>
+        <TopbarBrand />
         <span className="topbar__crumb">{activeNode ? pathOf(nodeMap, activeNode.id) : ""}</span>
         <div className="topbar__right">
           <button className="btn btn--run btn--sm" onClick={handleRun} disabled={!activeNode || running || !canRun} title={canRun ? "Run (Ctrl+Enter)" : "Running code is turned off for your account"}>
             <IconPlay size={13} /> {running ? "Running…" : "Run"}
           </button>
-          <Link href="/dashboard" className="btn btn--ghost btn--sm">Dashboard</Link>
+          <Link href="/dashboard" className="btn btn--ghost btn--sm topbar__nav">Dashboard</Link>
           <ProfileMenu />
         </div>
       </header>

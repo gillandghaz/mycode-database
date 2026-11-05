@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import Logo, { BrandWord } from "@/components/Logo";
+import { TopbarBrand } from "@/components/Logo";
 import RequireAuth from "@/components/RequireAuth";
 import ProfileMenu from "@/components/ProfileMenu";
 import OverviewTab from "@/components/tabs/OverviewTab";
@@ -50,9 +50,9 @@ function DashboardInner() {
   return (
     <div className="dash">
       <header className="topbar">
-        <Link href="/app" className="brand"><Logo size={26} /><BrandWord /></Link>
+        <TopbarBrand />
         <div className="topbar__right">
-          <Link href="/app" className="btn btn--ghost btn--sm">Editor</Link>
+          <Link href="/app" className="btn btn--ghost btn--sm topbar__nav">Editor</Link>
           <ProfileMenu />
         </div>
       </header>

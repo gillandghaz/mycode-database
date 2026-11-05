@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 // Brand mark: a rounded square with "</>" — drawn in SVG, no image file needed.
 export default function Logo({ size = 24 }: { size?: number }) {
   return (
@@ -13,5 +15,16 @@ export function BrandWord() {
     <span className="brand__word">
       mycode<i>-</i>database
     </span>
+  );
+}
+
+// The brand link used in the top bar of every signed-in page (/app and
+// /dashboard) so the logo and the name always have the same size.
+export function TopbarBrand() {
+  return (
+    <Link href="/app" className="brand">
+      <Logo size={24} />
+      <BrandWord />
+    </Link>
   );
 }

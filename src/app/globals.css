@@ -282,3 +282,12 @@ a { color: inherit; }
 .contact-desc { margin-top: 16px; }
 .contact-desc__text { font-size: 14px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; margin: 0 0 10px; }
 .hint-inline { color: var(--text-3); font-weight: 400; font-size: 11.5px; }
+
+/* ---------- top bar: identical brand on /app and /dashboard ---------- */
+.topbar .brand { flex: none; white-space: nowrap; }
+@media (max-width: 560px) {
+  .topbar { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  /* Editor / Dashboard are also in the profile menu; hiding the duplicate
+     button keeps the brand on one line instead of squeezing it. */
+  .topbar__nav { display: none; }
+}
