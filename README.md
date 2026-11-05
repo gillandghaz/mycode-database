@@ -65,7 +65,7 @@ Tersedia di menu titik tiga Explorer.
 - Dashboard: *Overview* (jumlah folder/file, ukuran kode, 5 file terakhir), *Account*, *Settings* (ukuran font, word wrap, kurangi animasi).
 - Panel admin: daftar pengguna, buka workspace pengguna, ubah peran, hapus akun, dan **saklar buka/tutup pendaftaran** (ditegakkan di server). Tombol **Manage in Admin** di editor langsung membuka tab Admin (`/dashboard?tab=admin`).
 - **Izin menjalankan kode:** saklar *Allow everyone to run code*. Saat dimatikan, hanya pengguna yang dipilih lewat tombol **Edit** (di samping saklar) yang bisa Run; yang lain melihat pesan, dan server menolak permintaannya (`403 run-disabled`). Admin tidak dikecualikan otomatis.
-- **Menu Contact** (paling bawah di dashboard): semua pengguna melihat daftar kontak dan tautannya; hanya admin yang bisa mengeditnya (jenis, judul opsional, tautan/isi). Nama atau tautan yang kosong tampil sebagai “-”. Hanya tautan `http(s)`, `mailto:`, `tel:`, email, dan `www.` yang dapat diklik.
+- **Menu Contact** (paling bawah di dashboard, tampilan mengikuti proyek Gramofon): semua pengguna melihat daftar kontak dan tautannya, dan perubahan admin langsung terlihat tanpa memuat ulang. Admin mengedit **per kontak** lewat ikon pensil di samping nama (popup berisi *Nama jenis kontak*, *Judul kontak* opsional, dan *Tautan / isi*, dengan tombol Hapus), menambah lewat **+ Tambah kontak**, dan mengubah teks **deskripsi**. Nama atau tautan yang kosong tampil sebagai “-”. Email, nomor telepon, dan domain tanpa skema (mis. `github.com/nama`) otomatis menjadi tautan; skema berbahaya seperti `javascript:` tidak pernah dijadikan tautan.
 - **Safe mode** admin: melihat kode pengguna lain boleh, mengubahnya hanya setelah safe mode dimatikan.
 - Akun yang dinonaktifkan atau dicabut di Firebase otomatis dikeluarkan dari sesi (diperiksa tiap 15 detik).
 
@@ -241,7 +241,7 @@ Firestore menyimpan kode dan metadata.
 | `fileContents/{id}` | isi kode (maksimal 200.000 karakter); id sama dengan node file |
 | `avatars/{uid}` | foto profil: `dataUrl` (JPEG, ≤ 120.000 karakter); pemilik bisa menambah/mengganti, tidak bisa menghapus |
 | `settings/run` | `allowAll` (false = hanya pengguna terpilih yang boleh Run); ditulis server saja |
-| `settings/contacts` | `items`: daftar `{ type, title, link }` (maks. 20); ditulis server saja |
+| `settings/contacts` | `items`: daftar `{ id, type, title, link }` (maks. 20) dan `description` (maks. 500 karakter); ditulis server saja |
 | `users/{uid}.runAllowed` | `true` = pengguna ini boleh Run saat `allowAll` mati; hanya diubah admin lewat server |
 
 Aturan nama: username 3–20 karakter (`a-z 0-9 _`); nama file/folder maksimal 64 karakter; nama file harus pengenal Java yang sah berakhiran `.java` (nama file = nama class).
