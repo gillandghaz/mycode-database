@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { adminDeleteUser, listAllUsers, setAdminSafeMode, setUserRole, type AdminUserRow } from "@/lib/admin";
 import { isRegistrationOpen, setRegistrationOpen } from "@/lib/settings";
 import { ConfirmDialog } from "@/components/Modal";
+import { adminSetRunAllowAll, readRunAllowAll } from "@/lib/run-access";
+import RunAccessDialog from "./RunAccessDialog";
 
 export default function AdminTab() {
   const { user, safeMode } = useAuth();
@@ -18,6 +20,25 @@ export default function AdminTab() {
   const [toggleRole, setToggleRole] = useState<AdminUserRow | null>(null);
 
   const [regOpen, setRegOpen] = useState<boolean | null>(null);
+  const [runAll, setRunAll] = useState<boolean | null>(null);
+  const [editRun, setEditRun] = useState(false);
+
+  useEffect(() => {
+    readRunAllowAll().then(setRunAll).catch(() => setError("Couldn't load the run setting."));
+  }, []);
+
+  async function changeRunAll(allow: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      await adminSetRunAllowAll(allow);
+      setRunAll(allow);
+    } catch {
+      setError("Couldn't change the run setting.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     isRegistrationOpen().then(setRegOpen).catch(() => setError("Couldn't load the sign-up setting."));
@@ -136,6 +157,27 @@ export default function AdminTab() {
       </div>
 
       <div className="card">
+        <h3>Running code</h3>
+        <div className="switch-row" style={{ borderTop: 0, paddingBottom: 0 }}>
+          <div>
+            <strong>Allow everyone to run code</strong>
+            <span className="hint-text">
+              {runAll === false
+                ? "Off: only the users selected in Edit can run code. Everyone else, admins included, gets a message instead."
+                : "On: every signed-in user can run code. Use Edit to choose who keeps access if you turn this off."}
+            </span>
+          </div>
+          <div className="switch-actions">
+            <label className="switch" title="Allow everyone to run code">
+              <input type="checkbox" checked={runAll !== false} disabled={busy || runAll === null} onChange={(e) => changeRunAll(e.target.checked)} aria-label="Allow everyone to run code" />
+              <i />
+            </label>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditRun(true)} disabled={runAll === null} title="Choose who can run code">Edit</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
         <h3>Users {users && <span className="hint-text">({users.length})</span>}</h3>
         <p className="desc">Open a workspace to view someone's code.</p>
         <div className="field" style={{ maxWidth: 320 }}>
@@ -171,6 +213,7 @@ export default function AdminTab() {
         )}
       </div>
 
+      <RunAccessDialog open={editRun} users={users} allowAll={runAll !== false} onClose={() => setEditRun(false)} onSaved={load} />
       <ConfirmDialog open={confirmSafeOff} danger title="Turn safe mode off?" message="You will be able to edit and delete other users' code. Everything you change is real and can't be undone." confirmLabel="Turn off" busy={busy} onConfirm={() => changeSafeMode(false)} onCancel={() => setConfirmSafeOff(false)} />
       <ConfirmDialog open={!!toggleRole} title={toggleRole?.role === "admin" ? "Remove admin rights?" : "Make this user an admin?"} message={`@${toggleRole?.username} ${toggleRole?.role === "admin" ? "will lose" : "will gain"} access to the admin tools.`} confirmLabel="Confirm" busy={busy} onConfirm={doRole} onCancel={() => setToggleRole(null)} />
       <ConfirmDialog open={!!toDelete} danger title="Delete this account?" message={`@${toDelete?.username} and ALL of their code will be permanently deleted.`} confirmLabel="Delete forever" busy={busy} onConfirm={doDelete} onCancel={() => setToDelete(null)} />

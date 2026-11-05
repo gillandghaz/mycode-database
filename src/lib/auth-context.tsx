@@ -9,6 +9,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { ensureUserProfile, isSignupInProgress, type UserProfile } from "./profile";
 import { setAuthHint, setAuthNotice } from "./auth-hint";
+import { isValidAvatar } from "./avatar";
 
 interface AuthState {
   user: User | null;
@@ -16,6 +17,8 @@ interface AuthState {
   isAdmin: boolean;
   // Admin safe mode: ON unless the admin explicitly turned it off.
   safeMode: boolean;
+  // The user's profile photo (a validated JPEG data URL) or null.
+  avatarUrl: string | null;
   loading: boolean;
 }
 
@@ -24,6 +27,7 @@ const AuthContext = createContext<AuthState>({
   profile: null,
   isAdmin: false,
   safeMode: true,
+  avatarUrl: null,
   loading: true,
 });
 
@@ -41,6 +45,7 @@ function kickOut(message?: string) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,6 +89,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
     return () => unsub();
   }, [user]);
+
+  // Profile photo (avatars/{uid}). Only listened to once the profile exists,
+  // because the rules only let registered members read data.
+  const uid = user?.uid;
+  const hasProfile = !!profile;
+  useEffect(() => {
+    if (!uid || !hasProfile) {
+      setAvatarUrl(null);
+      return;
+    }
+    return onSnapshot(
+      doc(db, "avatars", uid),
+      (snap) => {
+        const url = snap.exists() ? snap.data().dataUrl : null;
+        setAvatarUrl(isValidAvatar(url) ? url : null);
+      },
+      () => setAvatarUrl(null)
+    );
+  }, [uid, hasProfile]);
 
   // Session check: if the account was disabled (e.g. in the Firebase Console),
   // deleted, or its token revoked, the server answers 401 and we sign out
@@ -130,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = profile?.role === "admin";
   const safeMode = profile?.adminSafeMode !== false;
 
-  return <AuthContext.Provider value={{ user, profile, isAdmin, safeMode, loading }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, profile, isAdmin, safeMode, avatarUrl, loading }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

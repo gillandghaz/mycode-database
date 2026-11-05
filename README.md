@@ -61,8 +61,11 @@ Tersedia di menu titik tiga Explorer.
 
 ### Akun & administrasi
 - Login **Email + Password** dan **Google**; username unik; lupa kata sandi lewat tautan reset.
+- **Foto profil:** unggah dan ganti di Dashboard → Account (JPG/PNG/WebP, dipotong persegi dan dikecilkan ke 256×256 di browser). Foto tampil di menu profil. Sengaja tidak ada fitur hapus foto.
 - Dashboard: *Overview* (jumlah folder/file, ukuran kode, 5 file terakhir), *Account*, *Settings* (ukuran font, word wrap, kurangi animasi).
-- Panel admin: daftar pengguna, buka workspace pengguna, ubah peran, hapus akun, dan **saklar buka/tutup pendaftaran** (ditegakkan di server).
+- Panel admin: daftar pengguna, buka workspace pengguna, ubah peran, hapus akun, dan **saklar buka/tutup pendaftaran** (ditegakkan di server). Tombol **Manage in Admin** di editor langsung membuka tab Admin (`/dashboard?tab=admin`).
+- **Izin menjalankan kode:** saklar *Allow everyone to run code*. Saat dimatikan, hanya pengguna yang dipilih lewat tombol **Edit** (di samping saklar) yang bisa Run; yang lain melihat pesan, dan server menolak permintaannya (`403 run-disabled`). Admin tidak dikecualikan otomatis.
+- **Menu Contact** (paling bawah di dashboard): semua pengguna melihat daftar kontak dan tautannya; hanya admin yang bisa mengeditnya (jenis, judul opsional, tautan/isi). Nama atau tautan yang kosong tampil sebagai “-”. Hanya tautan `http(s)`, `mailto:`, `tel:`, email, dan `www.` yang dapat diklik.
 - **Safe mode** admin: melihat kode pengguna lain boleh, mengubahnya hanya setelah safe mode dimatikan.
 - Akun yang dinonaktifkan atau dicabut di Firebase otomatis dikeluarkan dari sesi (diperiksa tiap 15 detik).
 
@@ -236,6 +239,10 @@ Firestore menyimpan kode dan metadata.
 | `settings/app` | saklar pendaftaran (`registrationOpen`) |
 | `nodes/{id}` | folder dan metadata file: `ownerUid`, `parentId`, `type`, `name`, `size`, waktu |
 | `fileContents/{id}` | isi kode (maksimal 200.000 karakter); id sama dengan node file |
+| `avatars/{uid}` | foto profil: `dataUrl` (JPEG, ≤ 120.000 karakter); pemilik bisa menambah/mengganti, tidak bisa menghapus |
+| `settings/run` | `allowAll` (false = hanya pengguna terpilih yang boleh Run); ditulis server saja |
+| `settings/contacts` | `items`: daftar `{ type, title, link }` (maks. 20); ditulis server saja |
+| `users/{uid}.runAllowed` | `true` = pengguna ini boleh Run saat `allowAll` mati; hanya diubah admin lewat server |
 
 Aturan nama: username 3–20 karakter (`a-z 0-9 _`); nama file/folder maksimal 64 karakter; nama file harus pengenal Java yang sah berakhiran `.java` (nama file = nama class).
 
@@ -249,7 +256,9 @@ Semua endpoint memakai `POST` dengan header `Authorization: Bearer <Firebase ID 
 |---|---|---|
 | `/api/auth/gate` | Pengguna | Menolak profil baru (dan menghapus akun Auth barunya) saat pendaftaran ditutup |
 | `/api/auth/session` | Pengguna | Validasi sesi (dipakai pemeriksaan berkala klien) |
-| `/api/run` | Pengguna | Kompilasi dan jalankan satu file Java |
+| `/api/run` | Pengguna (diizinkan Run) | Kompilasi dan jalankan satu file Java |
+| `/api/admin/run-access` | Admin | Atur `allowAll` dan daftar pengguna yang boleh Run |
+| `/api/admin/contacts` | Admin | Simpan daftar kontak (maks. 20; panjang dibatasi) |
 | `/api/admin/delete-user` | Admin, safe mode OFF | Hapus akun Authentication beserta seluruh datanya |
 
 **`POST /api/run`**
@@ -269,6 +278,7 @@ Validasi: `language` harus `"java"`; `fileName` cocok `^[A-Za-z_][A-Za-z0-9_]{0,
 | 400 | `bad-language` / tanpa kode | Masukan tidak valid |
 | 401 | `no-token`, `invalid-session`, `session-revoked` | Sesi tidak valid |
 | 403 | `no-profile` | Akun Auth tanpa profil |
+| 403 | `run-disabled` | Run dimatikan untuk akun ini oleh admin |
 | 429 | `runner-error` | Compiler sibuk atau kuota habis |
 | 502 | `runner-error` | Kunci ditolak atau layanan tidak terjangkau |
 | 503 | `runner-unavailable` | `RUNNER_PROVIDER` belum diatur |
@@ -285,7 +295,10 @@ Validasi: `language` harus `"java"`; `fileName` cocok `^[A-Za-z_][A-Za-z0-9_]{0,
 | Safe mode | Admin tidak dapat mengubah kode, peran, atau menghapus akun orang lain selama safe mode ON; ditegakkan oleh Rules dan server |
 | Pendaftaran | Saklar ditegakkan tiga lapis: UI, gerbang server, dan Security Rules; termasuk pendaftaran Google |
 | Gagal-tertutup | Jika gerbang pendaftaran gagal, akun baru dihapus dan sesi ditutup (tidak ada akun/sesi tanpa profil) |
-| Eksekusi kode | Wajib login dan berprofil; nama file dan ukuran divalidasi; kunci compiler hanya dibaca server |
+| Eksekusi kode | Wajib login dan berprofil; izin Run diperiksa di server (bukan hanya tombol); nama file dan ukuran divalidasi; kunci compiler hanya dibaca server |
+| Pengaturan admin | Izin Run dan kontak ditulis lewat server setelah peran admin diperiksa ulang; klien tidak punya aturan tulis untuk dokumen ini |
+| Foto profil | Dikecilkan di browser; Rules membatasi prefiks `data:image/jpeg;base64` dan ukuran; antarmuka memvalidasi ulang sebelum menampilkan |
+| Tautan kontak | Hanya skema aman yang dijadikan tautan (`rel="noopener noreferrer nofollow"`); `javascript:` dan sejenisnya tampil sebagai teks biasa |
 | Import | Nama, ukuran, kedalaman, dan encoding divalidasi; entri tersembunyi dan path berbahaya (`../`) diabaikan |
 | Rahasia | Kunci admin Firebase dan kunci compiler hanya dibaca server |
 | Header HTTP | HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
@@ -327,6 +340,7 @@ Transparan soal kondisi saat ini:
 | ⚠️ Sebagian | CSP masih *Report-Only* dan memperbolehkan `'unsafe-inline'` untuk skrip |
 | ⚠️ Sebagian | Security Rules dipublikasikan manual dan belum diuji dengan Firebase Emulator |
 | ⚠️ Sebagian | Impor banyak file menulis dalam batch 100 operasi; batasnya terhadap rules belum diuji di proyek asli |
+| ⚠️ Sebagian | Rules baru (`avatars`, `settings/run`, `settings/contacts`) belum diuji di emulator atau proyek Firebase asli |
 | ⚠️ Sebagian | Provider Piston ditulis dari dokumentasi dan belum diuji ke server nyata |
 | ⚠️ Terbatas | Hanya Java, dan hanya satu file per eksekusi |
 | ⚠️ Belum ada | Verifikasi email dan fitur hapus akun oleh pengguna sendiri |
@@ -370,6 +384,9 @@ src/
    ├─ runner/               Pemilih provider compiler (onlinecompiler, piston)
    ├─ fs.ts · tree.ts       Akses Firestore dan fungsi murni pohon file
    ├─ transfer.ts           Logika import/export
+   ├─ avatar.ts             Foto profil (crop, kecilkan, simpan)
+   ├─ run-access.ts         Izin Run (hook klien + pemanggil API admin)
+   ├─ contacts.ts           Data kontak + pembersih tautan
    └─ server-auth.ts · firebase-admin.ts   Verifikasi token, cek admin (server)
 firestore.rules             Security Rules Firestore
 next.config.mjs             Header keamanan & CSP

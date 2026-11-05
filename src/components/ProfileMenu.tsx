@@ -11,7 +11,7 @@ import { ConfirmDialog } from "./Modal";
 
 export default function ProfileMenu() {
   const router = useRouter();
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin, avatarUrl } = useAuth();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -38,7 +38,7 @@ export default function ProfileMenu() {
   return (
     <div className="profile-wrap" ref={wrapRef}>
       <button type="button" className="avatar" title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        {initial}
+        {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
       </button>
       {open && (
         <div className="menu" role="menu">

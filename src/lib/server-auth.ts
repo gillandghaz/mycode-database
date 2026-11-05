@@ -73,6 +73,16 @@ export async function isRegistrationOpenServer(): Promise<boolean> {
   return !snap.exists || snap.data()?.registrationOpen !== false;
 }
 
+// "Who may run code". settings/run.allowAll === false means only users with
+// runAllowed === true may run. Open by default when never set, so existing
+// installs keep working. Read on the server, never trusted from the browser.
+export async function canUserRun(uid: string): Promise<boolean> {
+  const db = adminDb();
+  const [runSnap, userSnap] = await Promise.all([db.collection("settings").doc("run").get(), db.collection("users").doc(uid).get()]);
+  if (!runSnap.exists || runSnap.data()?.allowAll !== false) return true;
+  return userSnap.data()?.runAllowed === true;
+}
+
 // JSON body with a size cap (default 64 KB).
 export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<Record<string, unknown>> {
   const declared = Number(request.headers.get("content-length") || 0);

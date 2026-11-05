@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, readJson, errorResponse, HttpError } from "@/lib/server-auth";
+import { requireUser, readJson, errorResponse, canUserRun, HttpError } from "@/lib/server-auth";
 import { getRunner } from "@/lib/runner";
 import { RunnerError, RunnerUnavailableError, type RunRequest } from "@/lib/runner/types";
 
@@ -14,7 +14,12 @@ const FILE_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}\.java$/;
 // RUNNER_PROVIDER (see lib/runner/index.ts) switches it on without UI changes.
 export async function POST(request: Request) {
   try {
-    await requireUser(request);
+    const decoded = await requireUser(request);
+
+    // Admin switch "Allow everyone to run code" (+ per-user exceptions).
+    if (!(await canUserRun(decoded.uid))) {
+      throw new HttpError(403, "Running code is turned off for your account right now.", "run-disabled");
+    }
 
     const body = await readJson(request, 256 * 1024);
     const language = body.language;

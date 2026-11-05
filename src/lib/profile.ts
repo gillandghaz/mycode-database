@@ -19,6 +19,9 @@ export interface UserProfile {
   settings?: UserSettings;
   // Admin-only. Safe mode is ON unless this is explicitly false.
   adminSafeMode?: boolean;
+  // Set by admins (/api/admin/run-access). Only matters while "Allow everyone
+  // to run code" is off: true = this user may still run code.
+  runAllowed?: boolean;
 }
 
 // ---- sign-up in progress ---------------------------------------------------

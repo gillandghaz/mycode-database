@@ -35,7 +35,7 @@ Hanya kode terbaru di cabang `main` dan deployment produksi yang bersumber darin
 
 ## Cakupan
 
-**Dalam cakupan:** kode aplikasi, Route Handlers `/api/*` (`auth/gate`, `auth/session`, `run`, `admin/delete-user`), logika pendaftaran, safe mode admin, import/export, dan `firestore.rules`.
+**Dalam cakupan:** kode aplikasi, Route Handlers `/api/*` (`auth/gate`, `auth/session`, `run`, `admin/delete-user`, `admin/run-access`, `admin/contacts`), logika pendaftaran, izin menjalankan kode, safe mode admin, foto profil, import/export, dan `firestore.rules`.
 
 **Di luar cakupan:** layanan pihak ketiga (Firebase, Vercel, GitHub, serta layanan compiler onlinecompiler.io atau Piston yang menjalankan kode), serangan yang memerlukan akses fisik ke perangkat korban, rekayasa sosial, serta laporan otomatis tanpa dampak keamanan nyata (mis. temuan *scanner* tanpa bukti eksploitasi).
 

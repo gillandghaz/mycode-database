@@ -13,6 +13,7 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { setAdminSafeMode } from "@/lib/admin";
 import { createNode, deleteNodeTree, importNodes, loadContent, moveNode, newNodeId, renameNode, saveContent, subscribeNodes } from "@/lib/fs";
+import { useCanRun } from "@/lib/run-access";
 import { downloadBlob, exportFolderZip, formatSkipped, planFromFiles, resolvePlan, textBlob } from "@/lib/transfer";
 import { getTemplate } from "@/lib/templates";
 import {
@@ -372,9 +373,15 @@ export default function Ide() {
   const [notAvailable, setNotAvailable] = useState(false);
 
   const activeNode = activeId ? nodeMap.get(activeId) : undefined;
+  const canRun = useCanRun();
 
   async function handleRun() {
     if (!activeNode || running) return;
+    if (!canRun) {
+      setTermTab("output");
+      setLines((l) => [...l, { kind: "err", text: "Running code is turned off for your account right now." }]);
+      return;
+    }
     const id = activeNode.id;
     setTermTab("output");
     await flushFile(id);
@@ -439,7 +446,7 @@ export default function Ide() {
         <Link href="/app" className="brand"><Logo size={24} /><BrandWord /></Link>
         <span className="topbar__crumb">{activeNode ? pathOf(nodeMap, activeNode.id) : ""}</span>
         <div className="topbar__right">
-          <button className="btn btn--run btn--sm" onClick={handleRun} disabled={!activeNode || running} title="Run (Ctrl+Enter)">
+          <button className="btn btn--run btn--sm" onClick={handleRun} disabled={!activeNode || running || !canRun} title={canRun ? "Run (Ctrl+Enter)" : "Running code is turned off for your account"}>
             <IconPlay size={13} /> {running ? "Running…" : "Run"}
           </button>
           <Link href="/dashboard" className="btn btn--ghost btn--sm">Dashboard</Link>
@@ -456,7 +463,7 @@ export default function Ide() {
             <span>Safe mode is OFF — changes you make here edit <b>@{ownerName || "…"}</b>&apos;s real code.</span>
           )}
           {readOnly ? (
-            <Link href="/dashboard" className="btn btn--ghost btn--sm">Manage in Admin</Link>
+            <Link href="/dashboard?tab=admin" className="btn btn--ghost btn--sm">Manage in Admin</Link>
           ) : (
             <button className="btn btn--ghost btn--sm" onClick={() => setAdminSafeMode(user!.uid, true).catch(() => flash("Couldn't change safe mode."))}>Turn safe mode on</button>
           )}

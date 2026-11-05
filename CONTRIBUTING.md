@@ -18,9 +18,10 @@ Jangan menyertakan rahasia (kunci API, *service account*, isi `.env*`), token, d
 
 ## Untuk pengelola
 
-- Operasi sensitif (otorisasi, pendaftaran, peran admin, safe mode, penghapusan akun, eksekusi kode) divalidasi di **server** dan di `firestore.rules`, bukan hanya di antarmuka.
+- Operasi sensitif (otorisasi, pendaftaran, peran admin, safe mode, izin menjalankan kode, penghapusan akun, eksekusi kode) divalidasi di **server** dan di `firestore.rules`, bukan hanya di antarmuka.
 - Firestore menyimpan kode dan metadata: pohon folder di `nodes`, isi kode di `fileContents`. Batas ukuran (`MAX_FILE_CHARS`) harus konsisten di `src/lib/tree.ts`, `firestore.rules`, dan `src/app/api/run/route.ts`.
 - Kode pengguna dijalankan oleh layanan compiler eksternal lewat `src/lib/runner/`. Provider baru cukup mengimplementasikan `CodeRunner` dan didaftarkan di `getRunner()`.
+- Pengaturan yang hanya boleh diubah admin (izin Run, kontak) ditulis lewat Route Handler dengan Admin SDK, bukan lewat aturan tulis di klien.
 - `firestore.rules` dipublikasikan manual setiap kali berubah.
 - Jaga agar `npm audit` tetap tanpa kerentanan; jangan menghapus blok `overrides` di `package.json` tanpa pengujian di Vercel, dan selalu commit `package-lock.json` bersama `package.json`.
 - Sebelum menggabungkan perubahan, jalankan `npm run typecheck` dan `npm run build`.

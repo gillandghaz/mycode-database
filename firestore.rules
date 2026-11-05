@@ -40,7 +40,7 @@ service cloud.firestore {
       return u is string && u.matches('^[a-z0-9_]{3,20}$');
     }
 
-    // ---- users/{userId}: profile (email, username, displayName, role, settings, adminSafeMode)
+    // ---- users/{userId}: profile (email, username, displayName, role, settings, adminSafeMode, runAllowed)
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
@@ -98,14 +98,44 @@ service cloud.firestore {
 
     // ---- settings/app: public sign-up switch. Readable by anyone (the sign-up
     // page needs it before login); only admins may write it.
-    match /settings/{docId} {
+    match /settings/app {
       allow read: if true;
-      allow create: if isAdmin() && docId == 'app'
+      allow create: if isAdmin()
         && request.resource.data.keys().hasOnly(['registrationOpen'])
         && request.resource.data.registrationOpen is bool;
-      allow update: if isAdmin() && docId == 'app'
+      allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registrationOpen'])
         && request.resource.data.registrationOpen is bool;
+      allow delete: if false;
+    }
+
+    // ---- settings/run ("Allow everyone to run code") and settings/contacts
+    // (the Contact page). Readable by registered users only. Written ONLY by
+    // the server (/api/admin/run-access and /api/admin/contacts use the Admin
+    // SDK after checking the caller is an admin), so no client write rule.
+    match /settings/run {
+      allow read: if isMember();
+      allow write: if false;
+    }
+    match /settings/contacts {
+      allow read: if isMember();
+      allow write: if false;
+    }
+
+    // ---- avatars/{uid}: profile photo. A small JPEG data URL (the app shrinks
+    // it to 256x256). Owner can add or replace it; there is no delete (the
+    // admin delete-user route removes it with the account).
+    function validAvatar(d) {
+      return d.keys().hasOnly(['dataUrl', 'updatedAt'])
+        && d.dataUrl is string
+        && d.dataUrl.size() > 30 && d.dataUrl.size() <= 120000
+        && d.dataUrl.split(',').size() == 2
+        && d.dataUrl.split(',')[0] == 'data:image/jpeg;base64';
+    }
+
+    match /avatars/{userId} {
+      allow read: if isMember() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isMember() && request.auth.uid == userId && validAvatar(request.resource.data);
       allow delete: if false;
     }
 

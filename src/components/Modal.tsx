@@ -7,10 +7,11 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   labelledBy?: string;
+  wide?: boolean;
 }
 
 // Generic dialog: closes on Escape and on backdrop click.
-export function Modal({ open, onClose, children, labelledBy }: ModalProps) {
+export function Modal({ open, onClose, children, labelledBy, wide = false }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -23,7 +24,7 @@ export function Modal({ open, onClose, children, labelledBy }: ModalProps) {
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={"modal" + (wide ? " modal--wide" : "")} role="dialog" aria-modal="true" aria-labelledby={labelledBy} onMouseDown={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>

@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     await deleteWhereOwner("fileContents", targetUid);
     await deleteWhereOwner("nodes", targetUid);
     if (username) await db.collection("usernames").doc(username).delete();
+    await db.collection("avatars").doc(targetUid).delete();
     await db.collection("users").doc(targetUid).delete();
 
     return NextResponse.json({ ok: true });
