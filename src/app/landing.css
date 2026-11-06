@@ -70,3 +70,16 @@
   .lp-burger { display: inline-grid; }
   .lp-hero__grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- phones ---------- */
+.lp-win__tree p, .lp-win__term, .lp-win__bar span { overflow: hidden; text-overflow: ellipsis; }
+.lp-menu-m .lp-mi--signin { display: none; }
+@media (max-width: 560px) {
+  .lp-top__in { gap: 8px; padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); }
+  .lp-cta .btn { flex: 1 1 auto; }
+}
+/* Not enough room for brand + both buttons: "Sign in" moves into the menu. */
+@media (max-width: 440px) {
+  .lp-signin { display: none; }
+  .lp-menu-m .lp-mi--signin { display: block; }
+}

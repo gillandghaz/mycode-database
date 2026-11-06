@@ -39,6 +39,11 @@ Prinsip rancangan:
 
 ## ✨ Fitur
 
+### Tampilan di ponsel & tablet
+- Tata letak menyesuaikan layar (iOS dan Android): tidak ada halaman yang lebih lebar dari layar, dan sidebar editor menjadi panel geser.
+- Teks satu baris yang terlalu panjang (nama file/folder, tab, nama pengguna, email, kontak) dipotong dengan “…”; paragraf tetap membungkus dan kata panjang dipecah agar tidak melebar.
+- Kolom input dan editor memakai ukuran 16 px di layar sentuh sehingga iOS tidak memperbesar halaman saat kolom difokuskan; target sentuh dibuat seukuran jari; area aman (notch dan indikator Home) dihormati.
+
 ### Workspace
 - **Folder bersarang** (hingga kedalaman 12): buat, ganti nama, pindah, hapus.
 - **Pindah dengan drag and drop**, atau lewat menu **Move to…** (praktis di ponsel).

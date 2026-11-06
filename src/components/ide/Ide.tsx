@@ -447,7 +447,7 @@ export default function Ide() {
         <span className="topbar__crumb">{activeNode ? pathOf(nodeMap, activeNode.id) : ""}</span>
         <div className="topbar__right">
           <button className="btn btn--run btn--sm" onClick={handleRun} disabled={!activeNode || running || !canRun} title={canRun ? "Run (Ctrl+Enter)" : "Running code is turned off for your account"}>
-            <IconPlay size={13} /> {running ? "Running…" : "Run"}
+            <IconPlay size={13} /> <span className="topbar__runlabel">{running ? "Running…" : "Run"}</span>
           </button>
           <Link href="/dashboard" className="btn btn--ghost btn--sm topbar__nav">Dashboard</Link>
           <ProfileMenu />
@@ -508,7 +508,7 @@ export default function Ide() {
               if (!n) return null;
               return (
                 <div key={id} role="tab" aria-selected={id === activeId} tabIndex={0} className={"ide-tab" + (id === activeId ? " is-active" : "")} onClick={() => setActiveId(id)} onKeyDown={(e) => e.key === "Enter" && setActiveId(id)}>
-                  {n.name}
+                  <span className="ide-tab__name" title={n.name}>{n.name}</span>
                   {dirty(id) && <span className="ide-tab__dot" aria-label="unsaved" />}
                   <button className="ide-tab__x" aria-label={`Close ${n.name}`} onClick={(e) => { e.stopPropagation(); closeTab(id); }}><IconClose size={13} /></button>
                 </div>
@@ -528,7 +528,7 @@ export default function Ide() {
                 readOnly={readOnly}
                 onChange={(v) => onEdit(activeNode.id, v)}
                 basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true, indentOnInput: true, autocompletion: true }}
-                style={{ fontSize: settings.fontSize ?? 14, height: "100%" }}
+                style={{ fontSize: settings.fontSize ?? 14, height: "100%", ["--editor-fs" as string]: `${settings.fontSize ?? 14}px` }}
               />
             ) : activeNode ? (
               <div className="ide-welcome">Opening…</div>

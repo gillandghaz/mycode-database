@@ -39,8 +39,8 @@ export default function OverviewTab() {
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {recent.map((f) => (
             <li key={f.id} className="switch-row" style={{ padding: "9px 0" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 13.5 }}>{f.name}</span>
-              <span className="hint-text">{f.updatedAt ? new Date(f.updatedAt).toLocaleString() : ""}</span>
+              <span className="trunc" title={f.name} style={{ fontFamily: "var(--font-mono)", fontSize: 13.5 }}>{f.name}</span>
+              <span className="hint-text nowrap">{f.updatedAt ? new Date(f.updatedAt).toLocaleString() : ""}</span>
             </li>
           ))}
         </ul>

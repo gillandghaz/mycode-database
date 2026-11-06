@@ -58,11 +58,16 @@ export default function Nav() {
         </Link>
         <nav className="lp-menu" aria-label="Sections">{links}</nav>
         <div className="lp-top__act">
-          <Link href="/login" className="btn btn--ghost btn--sm">Sign in</Link>
+          <Link href="/login" className="btn btn--ghost btn--sm lp-signin">Sign in</Link>
           <Link href="/register" className="btn btn--primary btn--sm">Sign up</Link>
         </div>
       </div>
-      {open && <nav className="lp-menu-m" aria-label="Menu">{links}</nav>}
+      {open && (
+        <nav className="lp-menu-m" aria-label="Menu">
+          {links}
+          <Link href="/login" className="lp-mi lp-mi--signin" onClick={() => setOpen(false)}>Sign in</Link>
+        </nav>
+      )}
     </header>
   );
 }

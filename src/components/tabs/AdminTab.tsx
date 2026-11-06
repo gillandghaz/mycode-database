@@ -194,8 +194,8 @@ export default function AdminTab() {
                   const isMe = u.uid === user?.uid;
                   return (
                     <tr key={u.uid}>
-                      <td><div>{u.displayName}</div><div className="mono hint-text">@{u.username}</div></td>
-                      <td className="mono">{u.email}</td>
+                      <td className="cell-trunc"><div className="trunc" title={u.displayName}>{u.displayName}</div><div className="mono hint-text trunc" title={`@${u.username}`}>@{u.username}</div></td>
+                      <td className="mono cell-trunc"><div className="trunc" title={u.email}>{u.email}</div></td>
                       <td>{u.role === "admin" ? <span className="badge">admin</span> : "user"}</td>
                       <td>
                         <div className="row-actions">

@@ -44,9 +44,10 @@ export default function ProfileMenu() {
         <div className="menu" role="menu">
           <div className="menu__head">
             <div className="menu__name">
-              {profile?.displayName} {isAdmin && <span className="badge">admin</span>}
+              <span className="trunc" title={profile?.displayName}>{profile?.displayName}</span>
+              {isAdmin && <span className="badge">admin</span>}
             </div>
-            <span className="menu__sub">@{profile?.username}</span>
+            <span className="menu__sub" title={`@${profile?.username}`}>@{profile?.username}</span>
           </div>
           <Link href="/app" className="menu__item" role="menuitem">Editor</Link>
           <Link href="/dashboard" className="menu__item" role="menuitem">Dashboard</Link>
