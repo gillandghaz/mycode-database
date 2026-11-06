@@ -18,7 +18,7 @@ const FEATURES: [string, string][] = [
   ["Folders that make sense", "Create, name and nest folders like in a desktop IDE. Rename anything, any time."],
   ["Move things easily", "Drag a file into a folder, or use “Move to…” on a phone."],
   ["A real code editor", "Syntax highlighting, line numbers and autosave, right in your browser. Ctrl+S saves instantly."],
-  ["Run Java online", "Press Run (or Ctrl+Enter) to compile and run the open file. Output and errors appear in a terminal-style panel."],
+  ["Run Java online", "Press Run (or Ctrl+Enter) to compile and run the open file together with the classes it uses from other files. Output and errors appear in a terminal-style panel."],
   ["Keyboard input", "Programs that read with Scanner get their input from the Input tab next to the output."],
   ["Starter examples", "Empty class, Hello World, variables, loops, Scanner input — pick a template when you create a file."],
   ["Import & export", "Upload .java files or a whole .zip into any folder, and download a folder as .zip or a single file."],
@@ -33,7 +33,7 @@ const STEPS: [string, string][] = [
 ];
 
 const FAQ: [string, string][] = [
-  ["Can I run my code?", "Yes. Press Run to compile and run the file you have open and see the output in the panel below. Each run uses that one file, so other files in your workspace aren't included, and programs that run for too long are stopped."],
+  ["Can I run my code?", "Yes. Press Run to compile and run the file you have open and see the output in the panel below. Classes your program uses from other files in the same folder (or its sub-folders) are picked up automatically, so you can practise object-oriented code across files. Programs that run for too long are stopped."],
   ["Which languages are supported?", "Java at the moment. The runner is built so more languages can be added later."],
   ["Can I bring my files in and take them out?", "Yes. Use the three-dot menu on a folder to import .java files or a .zip, or to export the folder as a .zip. Single files can be downloaded from their own menu."],
   ["Are there any limits?", "A file can hold up to 200,000 characters, and one import accepts up to 300 files. Names should use letters, digits and underscores, like Main.java."],

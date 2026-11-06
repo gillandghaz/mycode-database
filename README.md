@@ -55,7 +55,7 @@ Prinsip rancangan:
 - Banyak tab, penanda perubahan belum tersimpan, dan peringatan sebelum menutup halaman.
 
 ### Menjalankan kode
-- **Run** atau `Ctrl+Enter` mengompilasi dan menjalankan file yang sedang terbuka.
+- **Run** atau `Ctrl+Enter` mengompilasi dan menjalankan file yang sedang terbuka. **OOP lintas file:** class yang dipakai dari file lain (di folder yang sama atau subfoldernya) ikut diambil otomatis; lihat [Menjalankan beberapa file](#menjalankan-beberapa-file-oop-lintas-file).
 - Panel bergaya terminal: tab **Output** (stdout, stderr, kode keluar, durasi) dan tab **Input** (stdin untuk program ber-`Scanner`).
 
 ### Import & Export
@@ -210,7 +210,7 @@ Salin `.env.local.example` → `.env.local`. **Jangan meng-commit** berkas ini (
 3. Id compiler Java bawaan adalah `openjdk-25`. Daftar id yang tersedia ada di `GET https://api.onlinecompiler.io/api/compilers/`; bila berbeda, isi `ONLINECOMPILER_JAVA_COMPILER`.
 4. Paket gratis memiliki kuota bulanan dari penyedia. Pantau di akun onlinecompiler.io.
 
-Batas eksekusi: hanya Java, dan hanya **file yang sedang terbuka** yang dikirim (belum ada proyek multi-file). Waktu tunggu server 25 detik.
+Batas eksekusi: hanya Java. File yang dijalankan beserta file lain yang dirujuknya dikirim sebagai satu permintaan (lihat bagian berikut). Waktu tunggu server 25 detik.
 
 ### Akun admin pertama
 
@@ -261,7 +261,7 @@ Semua endpoint memakai `POST` dengan header `Authorization: Bearer <Firebase ID 
 |---|---|---|
 | `/api/auth/gate` | Pengguna | Menolak profil baru (dan menghapus akun Auth barunya) saat pendaftaran ditutup |
 | `/api/auth/session` | Pengguna | Validasi sesi (dipakai pemeriksaan berkala klien) |
-| `/api/run` | Pengguna (diizinkan Run) | Kompilasi dan jalankan satu file Java |
+| `/api/run` | Pengguna (diizinkan Run) | Kompilasi dan jalankan file Java (opsional bersama file lain yang dirujuknya) |
 | `/api/admin/run-access` | Admin | Atur `allowAll` dan daftar pengguna yang boleh Run |
 | `/api/admin/contacts` | Admin | Simpan daftar kontak (maks. 20; panjang dibatasi) |
 | `/api/admin/delete-user` | Admin, safe mode OFF | Hapus akun Authentication beserta seluruh datanya |
@@ -270,13 +270,15 @@ Semua endpoint memakai `POST` dengan header `Authorization: Bearer <Firebase ID 
 
 ```json
 // Permintaan
-{ "language": "java", "fileName": "Main.java", "code": "...", "stdin": "..." }
+{ "language": "java", "fileName": "Main.java", "code": "...", "stdin": "...",
+  "files": [ { "name": "Dog.java", "code": "..." } ] }   // "files" opsional (maks. 30)
 
 // Respons 200
-{ "phase": "run", "stdout": "...", "stderr": "...", "exitCode": 0, "durationMs": 812 }
+{ "phase": "run", "stdout": "...", "stderr": "...", "exitCode": 0, "durationMs": 812,
+  "bundled": ["Dog.java"] }   // "bundled" hanya ada bila ada file tambahan
 ```
 
-Validasi: `language` harus `"java"`; `fileName` cocok `^[A-Za-z_][A-Za-z0-9_]{0,63}\.java$`; `code` ≤ 200.000 karakter; `stdin` ≤ 10.000 karakter.
+Validasi: `language` harus `"java"`; `fileName` cocok `^[A-Za-z_][A-Za-z0-9_]{0,63}\.java$`; `code` ≤ 200.000 karakter; `stdin` ≤ 10.000 karakter; `files` maks. 30 entri, tiap `name` mengikuti aturan `fileName`, tiap `code` ≤ 200.000 karakter, dan gabungan seluruhnya ≤ 500.000 karakter.
 
 | Status | `code` | Arti |
 |---|---|---|
@@ -288,6 +290,27 @@ Validasi: `language` harus `"java"`; `fileName` cocok `^[A-Za-z_][A-Za-z0-9_]{0,
 | 502 | `runner-error` | Kunci ditolak atau layanan tidak terjangkau |
 | 503 | `runner-unavailable` | `RUNNER_PROVIDER` belum diatur |
 | 504 | `runner-timeout` | Compiler terlalu lama menjawab |
+
+---
+
+## Menjalankan beberapa file (OOP lintas file)
+
+Layanan compiler hanya menerima **satu** sumber per permintaan dan menjalankannya dengan *source launcher* Java (`java Main.java`): tidak ada langkah kompilasi terpisah, nama class bebas, dan beberapa class tingkat-atas (termasuk yang `public`) boleh berada dalam satu file. Karena itu, saat Anda menekan Run:
+
+1. **Editor mencari file yang dibutuhkan.** Mulai dari file yang dijalankan, setiap nama class yang cocok dengan **nama file lain** (`Dog` ↔ `Dog.java`) diikuti, lalu nama-nama yang dipakai file itu, dan seterusnya. Pencarian hanya melihat kode sebenarnya (komentar dan string diabaikan) dan memakai isi editor terbaru, termasuk yang belum tersimpan.
+2. **Server menggabungkan** file-file itu menjadi satu sumber dengan **file yang dijalankan di urutan pertama**. Deklarasi `package` dihapus, `import` dikumpulkan di atas, import ke paket milik proyek dibuang, nama lengkap seperti `models.Dog` disederhanakan menjadi `Dog`, dan `public` pada class tingkat-atas dilepas (tidak berpengaruh dalam satu paket).
+3. **Nomor baris dipetakan kembali.** Pesan error dan stack trace ditampilkan dengan nama dan baris file aslinya, mis. `Dog.java:7`, bukan baris di sumber gabungan.
+
+**Lingkup:** folder file yang dijalankan beserta subfoldernya. Jika file itu mendeklarasikan `package` yang sesuai dengan nama folder (mis. `src/app/Main.java` dengan `package app;`), lingkupnya naik ke folder di atas paket (`src/`), sehingga `src/models/` ikut terjangkau. File yang tidak dirujuk, termasuk `Main.java` lain di folder berbeda, tidak pernah ikut.
+
+**Aturan dan batas:** maksimal 30 file tambahan dan 500.000 karakter total. Bila ada beberapa file bernama sama, yang dipilih adalah yang cocok dengan `import`, lalu yang sefolder, lalu yang paling dekat ke akar.
+
+**Batasan yang perlu diketahui:**
+- File ditemukan lewat **nama file = nama class** (konvensi Java). Class tambahan yang dideklarasikan di file lain dengan nama berbeda tidak akan ditemukan, kecuali file itu ikut karena alasan lain.
+- `import static` ke class milik proyek tidak didukung setelah penggabungan.
+- Class pertama di file yang dijalankan harus berisi `main`, sama seperti aturan `java File.java`.
+- *Compact source file* Java 25 (`void main()` tanpa class) tidak dirancang untuk digabung dengan class lain.
+- Hanya `stderr` yang dipetakan ulang nomor barisnya; keluaran biasa program tidak pernah diubah.
 
 ---
 
@@ -347,10 +370,10 @@ Transparan soal kondisi saat ini:
 | ⚠️ Sebagian | Impor banyak file menulis dalam batch 100 operasi; batasnya terhadap rules belum diuji di proyek asli |
 | ⚠️ Sebagian | Rules baru (`avatars`, `settings/run`, `settings/contacts`) belum diuji di emulator atau proyek Firebase asli |
 | ⚠️ Sebagian | Provider Piston ditulis dari dokumentasi dan belum diuji ke server nyata |
-| ⚠️ Terbatas | Hanya Java, dan hanya satu file per eksekusi |
+| ⚠️ Terbatas | Hanya Java; eksekusi multi-file memakai penggabungan sumber (lihat batasannya di bagian Menjalankan beberapa file) |
 | ⚠️ Belum ada | Verifikasi email dan fitur hapus akun oleh pengguna sendiri |
 | 🔧 Rencana | Menegakkan CSP, menambah tes untuk API dan rules, rate limit per pengguna, otomatisasi deploy rules |
-| 🔧 Rencana | Eksekusi proyek multi-file, dukungan bahasa tambahan |
+| 🔧 Rencana | Dukungan bahasa tambahan |
 
 ---
 
@@ -389,6 +412,8 @@ src/
    ├─ runner/               Pemilih provider compiler (onlinecompiler, piston)
    ├─ fs.ts · tree.ts       Akses Firestore dan fungsi murni pohon file
    ├─ transfer.ts           Logika import/export
+   ├─ java-bundle.ts        Penggabungan beberapa file Java + pemetaan baris error
+   ├─ java-scope.ts         Menentukan lingkup file yang boleh dipakai
    ├─ avatar.ts             Foto profil (crop, kecilkan, simpan)
    ├─ run-access.ts         Izin Run (hook klien + pemanggil API admin)
    ├─ contacts.ts           Data kontak + pembersih tautan

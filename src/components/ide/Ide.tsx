@@ -14,6 +14,8 @@ import { useAuth } from "@/lib/auth-context";
 import { setAdminSafeMode } from "@/lib/admin";
 import { createNode, deleteNodeTree, importNodes, loadContent, moveNode, newNodeId, renameNode, saveContent, subscribeNodes } from "@/lib/fs";
 import { useCanRun } from "@/lib/run-access";
+import { collectDependencies } from "@/lib/java-bundle";
+import { javaScope } from "@/lib/java-scope";
 import { downloadBlob, exportFolderZip, formatSkipped, planFromFiles, resolvePlan, textBlob } from "@/lib/transfer";
 import { getTemplate } from "@/lib/templates";
 import {
@@ -389,10 +391,32 @@ export default function Ide() {
     setLines((l) => [...l, { kind: "cmd", text: `$ run ${activeNode.name}` }]);
     try {
       const token = await auth.currentUser!.getIdToken();
+      const entryCode = buffersRef.current[id] ?? "";
+
+      // OOP across files: find the other files this one uses (same folder and
+      // sub-folders), including unsaved edits, and send them along.
+      let files: Array<{ name: string; code: string }> = [];
+      try {
+        const scope = javaScope(activeNode, nodeMap, kids, entryCode);
+        if (scope.candidates.length > 0) {
+          const dep = await collectDependencies({
+            entry: { id, name: activeNode.name, dir: scope.entryDir, code: entryCode },
+            candidates: scope.candidates,
+            getCode: textOf,
+          });
+          files = dep.files.map((f) => ({ name: f.name, code: f.code }));
+          if (dep.truncated) setLines((l) => [...l, { kind: "dim", text: "Some referenced files were left out (too many or too large)." }]);
+        }
+      } catch {
+        setLines((l) => [...l, { kind: "err", text: "Couldn't read the other files this program uses. Try again." }]);
+        return;
+      }
+      if (files.length > 0) setLines((l) => [...l, { kind: "dim", text: `using ${files.map((f) => f.name).join(", ")}` }]);
+
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ language: "java", fileName: activeNode.name, code: buffersRef.current[id] ?? "", stdin }),
+        body: JSON.stringify({ language: "java", fileName: activeNode.name, code: entryCode, stdin, files }),
       });
       const body = await res.json().catch(() => ({}));
       if (res.status === 503 && body.code === "runner-unavailable") {
