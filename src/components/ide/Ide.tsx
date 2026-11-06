@@ -447,7 +447,8 @@ export default function Ide() {
         <span className="topbar__crumb">{activeNode ? pathOf(nodeMap, activeNode.id) : ""}</span>
         <div className="topbar__right">
           <button className="btn btn--run btn--sm" onClick={handleRun} disabled={!activeNode || running || !canRun} title={canRun ? "Run (Ctrl+Enter)" : "Running code is turned off for your account"}>
-            <IconPlay size={13} /> <span className="topbar__runlabel">{running ? "Running…" : "Run"}</span>
+            {running ? <span className="spinner" role="status" aria-label="Running" /> : <IconPlay size={13} />}{" "}
+            <span className={"topbar__runlabel" + (running ? " is-running" : "")}>{running ? "Running…" : "Run"}</span>
           </button>
           <Link href="/dashboard" className="btn btn--ghost btn--sm topbar__nav">Dashboard</Link>
           <ProfileMenu />

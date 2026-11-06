@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { adminDeleteUser, listAllUsers, setAdminSafeMode, setUserRole, type AdminUserRow } from "@/lib/admin";
+import { adminDeleteUser, listAllUsers, listAvatars, setAdminSafeMode, setUserRole, type AdminUserRow } from "@/lib/admin";
 import { isRegistrationOpen, setRegistrationOpen } from "@/lib/settings";
 import { ConfirmDialog } from "@/components/Modal";
 import { adminSetRunAllowAll, readRunAllowAll } from "@/lib/run-access";
@@ -20,6 +20,7 @@ export default function AdminTab() {
   const [toggleRole, setToggleRole] = useState<AdminUserRow | null>(null);
 
   const [regOpen, setRegOpen] = useState<boolean | null>(null);
+  const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [runAll, setRunAll] = useState<boolean | null>(null);
   const [editRun, setEditRun] = useState(false);
 
@@ -60,7 +61,9 @@ export default function AdminTab() {
   const load = useCallback(async () => {
     setError("");
     try {
-      setUsers(await listAllUsers());
+      const [list, photos] = await Promise.all([listAllUsers(), listAvatars()]);
+      setAvatars(photos);
+      setUsers(list);
     } catch {
       setError("Couldn't load users.");
     }
@@ -194,7 +197,17 @@ export default function AdminTab() {
                   const isMe = u.uid === user?.uid;
                   return (
                     <tr key={u.uid}>
-                      <td className="cell-trunc"><div className="trunc" title={u.displayName}>{u.displayName}</div><div className="mono hint-text trunc" title={`@${u.username}`}>@{u.username}</div></td>
+                      <td className="cell-trunc">
+                        <div className="user-cell">
+                          <div className="avatar avatar--sm avatar--static" aria-hidden="true">
+                            {avatars[u.uid] ? <img src={avatars[u.uid]} alt="" /> : (u.displayName || u.email || "?").trim()[0]?.toUpperCase() || "?"}
+                          </div>
+                          <div className="user-cell__text">
+                            <div className="trunc" title={u.displayName}>{u.displayName}</div>
+                            <div className="mono hint-text trunc" title={`@${u.username}`}>@{u.username}</div>
+                          </div>
+                        </div>
+                      </td>
                       <td className="mono cell-trunc"><div className="trunc" title={u.email}>{u.email}</div></td>
                       <td>{u.role === "admin" ? <span className="badge">admin</span> : "user"}</td>
                       <td>

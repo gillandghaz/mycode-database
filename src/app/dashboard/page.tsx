@@ -60,7 +60,11 @@ function DashboardInner() {
       <div className="dash-shell">
         <nav className="dash-nav" aria-label="Dashboard sections">
           {tabs.map((t) => (
-            <button key={t.key} type="button" className={"dash-nav__btn" + (active === t.key ? " is-active" : "")} onClick={() => selectTab(t.key)}>
+            <button key={t.key} type="button" className={"dash-nav__btn" + (active === t.key ? " is-active" : "")} onClick={() => selectTab(t.key)}
+              // iOS/Android swallow the first tap while text is selected, the page is
+              // still scrolling or the keyboard is closing. pointerup still fires, so
+              // switch on it (a swipe on the bar ends in pointercancel, not pointerup).
+              onPointerUp={(e) => { if (e.pointerType !== "mouse") selectTab(t.key); }}>
               {t.label}
             </button>
           ))}

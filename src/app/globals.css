@@ -377,3 +377,30 @@ p, li, h1, h2, h3, h4, label, summary, .hint-text, .error-text, .ok-text, .desc,
   .dash-shell { padding-top: 12px; }
   .btn { padding-left: 12px; padding-right: 12px; }
 }
+
+/* ---------- phones: Run spinner, compact Run/Clear, steady top bar, tab bar taps ---------- */
+.spinner { display: inline-block; flex: none; width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.topbar__right { flex: none; }
+.topbar .avatar { flex: none; }
+
+/* Dashboard tab bar: no text selection or callout, so a tap is just a tap */
+.dash-nav { overscroll-behavior-x: contain; }
+.dash-nav__btn { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; flex: none; }
+
+/* Admin user list: photo to the left of the name */
+.avatar--sm { width: 32px; height: 32px; font-size: 14px; flex: none; }
+.avatar--static { cursor: default; }
+.user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.user-cell__text { min-width: 0; flex: 1; }
+
+@media (max-width: 820px), (pointer: coarse) {
+  /* Run (top bar) and Clear (terminal) stay small, even though other buttons grow for fingers */
+  .topbar .btn--run, .term__head .btn { min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
+  .topbar .btn--run { gap: 6px; }
+}
+@media (max-width: 560px) {
+  /* the label would make the bar wider while running and push the profile photo out */
+  .topbar__runlabel.is-running { display: none; }
+  .topbar { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+}

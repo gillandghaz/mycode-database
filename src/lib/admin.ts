@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, runTransaction, updateDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import type { Role, UserProfile } from "./profile";
+import { isValidAvatar } from "./avatar";
 
 export interface AdminUserRow extends UserProfile {
   uid: string;
@@ -13,6 +14,22 @@ export async function listAllUsers(): Promise<AdminUserRow[]> {
   const list = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as UserProfile) }));
   list.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
   return list;
+}
+
+// Every profile photo, keyed by uid (admins may read them all). If it can't be
+// read (e.g. rules not published yet) the table simply shows initials.
+export async function listAvatars(): Promise<Record<string, string>> {
+  try {
+    const snap = await getDocs(collection(db, "avatars"));
+    const out: Record<string, string> = {};
+    snap.forEach((d) => {
+      const url = d.data().dataUrl;
+      if (isValidAvatar(url)) out[d.id] = url;
+    });
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 export async function setUserRole(uid: string, role: Role): Promise<void> {
