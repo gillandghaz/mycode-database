@@ -13,8 +13,9 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { setAdminSafeMode } from "@/lib/admin";
 import { createNode, deleteNodeTree, importNodes, loadContent, moveNode, newNodeId, renameNode, saveContent, subscribeNodes } from "@/lib/fs";
-import { useCanRun } from "@/lib/run-access";
+import { useCanRun, useCanUseFeature } from "@/lib/run-access";
 import { collectDependencies } from "@/lib/java-bundle";
+import { composeStdin, MAX_INTERACTIVE_INPUTS, needsMoreInput, withoutInputError } from "@/lib/interactive-input";
 import { javaScope } from "@/lib/java-scope";
 import { downloadBlob, exportFolderZip, formatSkipped, planFromFiles, resolvePlan, textBlob } from "@/lib/transfer";
 import { getTemplate } from "@/lib/templates";
@@ -46,6 +47,16 @@ const editorBase = EditorView.theme({
   ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "rgba(242,181,68,0.06)" },
   "&.cm-focused": { outline: "none" },
 });
+
+// One interactive run: the program is replayed with more typed lines each time.
+interface RunSession {
+  fileName: string;
+  code: string;
+  files: Array<{ name: string; code: string }>;
+  baseStdin: string; // the Input tab
+  typed: string[]; // lines typed in the terminal so far
+  prevStdout: string; // output of the previous run, to show only what is new
+}
 
 export default function Ide() {
   const { user, profile, isAdmin, safeMode } = useAuth();
@@ -376,6 +387,74 @@ export default function Ide() {
 
   const activeNode = activeId ? nodeMap.get(activeId) : undefined;
   const canRun = useCanRun();
+  // Admin switch for typing input in the Output (off: the old behaviour, use the Input tab).
+  const canInteract = useCanUseFeature("interactive");
+
+  // ---- running, with typed input -------------------------------------------
+  // The compiler service takes all of stdin with the run, so it can't wait for
+  // typing. When a program stops only because Scanner ran out of input we show
+  // the output so far with an input line; pressing Enter runs the program again
+  // from the start with everything typed so far and adds just the new output.
+  // (See lib/interactive-input.ts.)
+  const sessionRef = useRef<RunSession | null>(null);
+  const [awaitingInput, setAwaitingInput] = useState(false);
+
+  function endSession() {
+    sessionRef.current = null;
+    setAwaitingInput(false);
+  }
+
+  // One run of the session. Adds its output to the terminal and either asks for
+  // the next line or finishes (and ends the session).
+  async function runStep(s: RunSession) {
+    const token = await auth.currentUser!.getIdToken();
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ language: "java", fileName: s.fileName, code: s.code, stdin: composeStdin(s.baseStdin, s.typed), files: s.files }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 503 && body.code === "runner-unavailable") {
+      setLines((l) => [...l, { kind: "dim", text: "The Java runner isn't connected yet." }]);
+      setNotAvailable(true);
+      return endSession();
+    }
+    if (!res.ok) {
+      setLines((l) => [...l, { kind: "err", text: body.error || `Request failed (HTTP ${res.status}).` }]);
+      return endSession();
+    }
+
+    const r = body as RunResponse;
+    const stdout = r.stdout ?? "";
+    // Earlier runs already showed their output; add only what is new.
+    let delta = stdout;
+    if (s.prevStdout) {
+      if (stdout.startsWith(s.prevStdout)) delta = stdout.slice(s.prevStdout.length);
+      else setLines((l) => [...l, { kind: "dim", text: "(the output changed between runs, so the program doesn't behave the same every time; showing it in full)" }]);
+    }
+    s.prevStdout = stdout;
+
+    const wantsInput = needsMoreInput({ exitCode: r.exitCode, stderr: r.stderr ?? "" });
+    if (wantsInput && canInteract && s.typed.length < MAX_INTERACTIVE_INPUTS) {
+      const out: TermLine[] = [];
+      if (delta) out.push({ kind: "out", text: delta, inline: true });
+      const otherErr = withoutInputError(r.stderr ?? "");
+      if (otherErr) out.push({ kind: "err", text: otherErr });
+      if (out.length) setLines((l) => [...l, ...out]);
+      setAwaitingInput(true);
+      return;
+    }
+
+    const out: TermLine[] = [];
+    if (delta) out.push({ kind: "out", text: delta });
+    if (r.stderr) out.push({ kind: "err", text: r.stderr });
+    if (wantsInput && !canInteract) out.push({ kind: "dim", text: "(this program needs input; typing it in the Output is turned off, so put it in the Input tab)" });
+    else if (wantsInput) out.push({ kind: "dim", text: `(stopped asking after ${MAX_INTERACTIVE_INPUTS} typed lines)` });
+    if (r.phase === "compile") out.push({ kind: "err", text: `✗ compilation failed (exit code ${r.exitCode ?? "?"})` });
+    else out.push({ kind: r.exitCode === 0 ? "good" : "err", text: `${r.exitCode === 0 ? "✓" : "✗"} exited with code ${r.exitCode ?? "?"} · ${r.durationMs} ms` });
+    setLines((l) => [...l, ...out]);
+    endSession();
+  }
 
   async function handleRun() {
     if (!activeNode || running) return;
@@ -384,13 +463,13 @@ export default function Ide() {
       setLines((l) => [...l, { kind: "err", text: "Running code is turned off for your account right now." }]);
       return;
     }
+    endSession(); // a new Run replaces a program that was still waiting for input
     const id = activeNode.id;
     setTermTab("output");
     await flushFile(id);
     setRunning(true);
     setLines((l) => [...l, { kind: "cmd", text: `$ run ${activeNode.name}` }]);
     try {
-      const token = await auth.currentUser!.getIdToken();
       const entryCode = buffersRef.current[id] ?? "";
 
       // OOP across files: find the other files this one uses (same folder and
@@ -413,31 +492,39 @@ export default function Ide() {
       }
       if (files.length > 0) setLines((l) => [...l, { kind: "dim", text: `using ${files.map((f) => f.name).join(", ")}` }]);
 
-      const res = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ language: "java", fileName: activeNode.name, code: entryCode, stdin, files }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (res.status === 503 && body.code === "runner-unavailable") {
-        setLines((l) => [...l, { kind: "dim", text: "The Java runner isn't connected yet." }]);
-        setNotAvailable(true);
-      } else if (!res.ok) {
-        setLines((l) => [...l, { kind: "err", text: body.error || `Request failed (HTTP ${res.status}).` }]);
-      } else {
-        const r = body as RunResponse;
-        const out: TermLine[] = [];
-        if (r.stdout) out.push({ kind: "out", text: r.stdout });
-        if (r.stderr) out.push({ kind: "err", text: r.stderr });
-        if (r.phase === "compile") out.push({ kind: "err", text: `✗ compilation failed (exit code ${r.exitCode ?? "?"})` });
-        else out.push({ kind: r.exitCode === 0 ? "good" : "err", text: `${r.exitCode === 0 ? "✓" : "✗"} exited with code ${r.exitCode ?? "?"} · ${r.durationMs} ms` });
-        setLines((l) => [...l, ...out]);
-      }
+      const session: RunSession = { fileName: activeNode.name, code: entryCode, files, baseStdin: stdin, typed: [], prevStdout: "" };
+      sessionRef.current = session;
+      await runStep(session);
     } catch {
       setLines((l) => [...l, { kind: "err", text: "Couldn't reach the server. Check your connection." }]);
+      endSession();
     } finally {
       setRunning(false);
     }
+  }
+
+  // Enter in the terminal's input line.
+  async function submitInput(line: string) {
+    const s = sessionRef.current;
+    if (!s || running) return;
+    s.typed.push(line);
+    setLines((l) => [...l, { kind: "stdin", text: line + "\n", inline: true }]);
+    setRunning(true);
+    try {
+      await runStep(s);
+    } catch {
+      setLines((l) => [...l, { kind: "err", text: "Couldn't reach the server. Check your connection." }]);
+      endSession();
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  // Esc in the input line: stop waiting.
+  function cancelInput() {
+    if (!sessionRef.current) return;
+    setLines((l) => [...l, { kind: "dim", text: "^C" }]);
+    endSession();
   }
 
   function onEditorKeyDown(e: React.KeyboardEvent) {
@@ -580,7 +667,7 @@ export default function Ide() {
             )}
           </div>
 
-          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => setLines([])} />
+          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => { setLines([]); endSession(); }} awaiting={awaitingInput} onSubmitInput={submitInput} onCancelInput={cancelInput} />
         </main>
       </div>
 

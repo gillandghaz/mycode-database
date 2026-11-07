@@ -6,9 +6,16 @@ import { requireAdmin, readJson, errorResponse, HttpError, DOC_ID_RE } from "@/l
 const MAX_USERS = 1000;
 const CHUNK = 300;
 
-// Admin settings for "who may run code".
-//   { allowAll: boolean }               -> settings/run.allowAll
-//   { users: { [uid]: boolean } }       -> users/{uid}.runAllowed
+// The features whose access an admin can limit. "run" is also enforced in
+// /api/run; "interactive" (typing input in the Output) is an editor feature.
+const FEATURES = {
+  run: { doc: "run", field: "runAllowed" },
+  interactive: { doc: "interactive", field: "interactiveAllowed" },
+} as const;
+
+// Admin settings for "who may use <feature>" (feature defaults to "run").
+//   { feature?, allowAll: boolean }          -> settings/{doc}.allowAll
+//   { feature?, users: { [uid]: boolean } }  -> users/{uid}.{field}
 // Not gated by safe mode: it changes access rules, never anybody's code.
 export async function POST(request: Request) {
   try {
@@ -17,9 +24,13 @@ export async function POST(request: Request) {
     const db = adminDb();
     let touched = 0;
 
+    const featureName = body.feature === undefined ? "run" : body.feature;
+    if (typeof featureName !== "string" || !Object.prototype.hasOwnProperty.call(FEATURES, featureName)) throw new HttpError(400, "Unknown feature.");
+    const feature = FEATURES[featureName as keyof typeof FEATURES];
+
     if ("allowAll" in body) {
       if (typeof body.allowAll !== "boolean") throw new HttpError(400, "allowAll must be true or false.");
-      await db.collection("settings").doc("run").set({ allowAll: body.allowAll, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await db.collection("settings").doc(feature.doc).set({ allowAll: body.allowAll, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       touched += 1;
     }
 
@@ -40,7 +51,7 @@ export async function POST(request: Request) {
           // Only existing profiles are touched: never create a users/{uid}
           // document (that would turn a bare Auth account into a "member").
           if (snap.exists) {
-            batch.update(snap.ref, { runAllowed: part[idx][1] });
+            batch.update(snap.ref, { [feature.field]: part[idx][1] });
             touched += 1;
           }
         });

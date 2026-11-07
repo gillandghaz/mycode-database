@@ -19,7 +19,7 @@ const FEATURES: [string, string][] = [
   ["Move things easily", "Drag a file into a folder, or use “Move to…” on a phone."],
   ["A real code editor", "Syntax highlighting, line numbers and autosave, right in your browser. Ctrl+S saves instantly."],
   ["Run Java online", "Press Run (or Ctrl+Enter) to compile and run the open file together with the classes it uses from other files. Output and errors appear in a terminal-style panel."],
-  ["Keyboard input", "Programs that read with Scanner get their input from the Input tab next to the output."],
+  ["Keyboard input", "Programs that read with Scanner can be answered right in the Output, line by line, or fed from the Input tab."],
   ["Starter examples", "Empty class, Hello World, variables, loops, Scanner input — pick a template when you create a file."],
   ["Import & export", "Upload .java files or a whole .zip into any folder, and download a folder as .zip or a single file."],
   ["Your editor, your way", "Choose the font size, turn word wrap on, or reduce motion in Settings."],

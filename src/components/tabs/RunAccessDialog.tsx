@@ -2,10 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/Modal";
-import { adminSetRunUsers } from "@/lib/run-access";
+import { adminSetFeatureUsers, FEATURE_FIELD, type Feature } from "@/lib/run-access";
 import type { AdminUserRow } from "@/lib/admin";
 
+const COPY: Record<Feature, { title: string; on: string; off: string; list: string }> = {
+  run: {
+    title: "Who can run code",
+    on: "Everyone can run code right now. The users you tick here keep access if you turn the switch off.",
+    off: "The switch is off: only the users ticked here can run code.",
+    list: "Users who can run code",
+  },
+  interactive: {
+    title: "Who can type input in the Output",
+    on: "Everyone can type input in the Output right now. The users you tick here keep it if you turn the switch off.",
+    off: "The switch is off: only the users ticked here can type input in the Output (everyone can still use the Input tab).",
+    list: "Users who can type input in the Output",
+  },
+};
+
 interface Props {
+  feature?: Feature;
   open: boolean;
   users: AdminUserRow[] | null;
   allowAll: boolean;
@@ -14,7 +30,9 @@ interface Props {
 }
 
 // Pick which users may run code while "Allow everyone to run code" is off.
-export default function RunAccessDialog({ open, users, allowAll, onClose, onSaved }: Props) {
+export default function RunAccessDialog({ feature = "run", open, users, allowAll, onClose, onSaved }: Props) {
+  const field = FEATURE_FIELD[feature];
+  const copy = COPY[feature];
   const [draft, setDraft] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,11 +42,11 @@ export default function RunAccessDialog({ open, users, allowAll, onClose, onSave
   useEffect(() => {
     if (!open) return;
     const next: Record<string, boolean> = {};
-    (users ?? []).forEach((u) => (next[u.uid] = u.runAllowed === true));
+    (users ?? []).forEach((u) => (next[u.uid] = u[field] === true));
     setDraft(next);
     setQuery("");
     setError("");
-  }, [open, users]);
+  }, [open, users, field]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -49,13 +67,13 @@ export default function RunAccessDialog({ open, users, allowAll, onClose, onSave
   async function save() {
     const changed: Record<string, boolean> = {};
     (users ?? []).forEach((u) => {
-      if ((draft[u.uid] ?? false) !== (u.runAllowed === true)) changed[u.uid] = draft[u.uid] ?? false;
+      if ((draft[u.uid] ?? false) !== (u[field] === true)) changed[u.uid] = draft[u.uid] ?? false;
     });
     if (Object.keys(changed).length === 0) return onClose();
     setBusy(true);
     setError("");
     try {
-      await adminSetRunUsers(changed);
+      await adminSetFeatureUsers(feature, changed);
       onSaved();
       onClose();
     } catch {
@@ -66,13 +84,9 @@ export default function RunAccessDialog({ open, users, allowAll, onClose, onSave
   }
 
   return (
-    <Modal open={open} onClose={busy ? () => {} : onClose} labelledBy="run-access-title" wide>
-      <h3 id="run-access-title">Who can run code</h3>
-      <p>
-        {allowAll
-          ? "Everyone can run code right now. The users you tick here keep access if you turn the switch off."
-          : "The switch is off: only the users ticked here can run code."}
-      </p>
+    <Modal open={open} onClose={busy ? () => {} : onClose} labelledBy={`${feature}-access-title`} wide>
+      <h3 id={`${feature}-access-title`}>{copy.title}</h3>
+      <p>{allowAll ? copy.on : copy.off}</p>
 
       <div className="field" style={{ marginBottom: 10 }}>
         <input placeholder="Search username, name or email" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search users" />
@@ -85,7 +99,7 @@ export default function RunAccessDialog({ open, users, allowAll, onClose, onSave
 
       {!users && <p className="hint-text">Loading…</p>}
       {users && (
-        <div className="pick-list" role="group" aria-label="Users who can run code">
+        <div className="pick-list" role="group" aria-label={copy.list}>
           {shown.length === 0 && <p className="hint-text" style={{ padding: 12, margin: 0 }}>No users match.</p>}
           {shown.map((u) => (
             <label className="pick-row" key={u.uid}>

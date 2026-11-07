@@ -404,3 +404,8 @@ p, li, h1, h2, h3, h4, label, summary, .hint-text, .error-text, .ok-text, .desc,
   .topbar__runlabel.is-running { display: none; }
   .topbar { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
 }
+
+/* ---------- typing input in the terminal ---------- */
+.term__body .stdin { color: var(--accent); }
+.term__input { display: inline-block; box-sizing: border-box; width: 12ch; min-width: 8ch; max-width: 100%; height: 1.5em; line-height: 1.5; background: transparent; border: 0; border-bottom: 1px solid var(--accent); border-radius: 0; color: var(--accent); caret-color: var(--accent); font: inherit; padding: 0 2px; margin: 0; outline: none; vertical-align: baseline; }
+.term__input:read-only { opacity: .6; }

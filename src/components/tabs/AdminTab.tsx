@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { adminDeleteUser, listAllUsers, listAvatars, setAdminSafeMode, setUserRole, type AdminUserRow } from "@/lib/admin";
 import { isRegistrationOpen, setRegistrationOpen } from "@/lib/settings";
 import { ConfirmDialog } from "@/components/Modal";
-import { adminSetRunAllowAll, readRunAllowAll } from "@/lib/run-access";
+import { adminSetFeatureAllowAll, readFeatureAllowAll, type Feature } from "@/lib/run-access";
 import RunAccessDialog from "./RunAccessDialog";
 
 export default function AdminTab() {
@@ -23,19 +23,23 @@ export default function AdminTab() {
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [runAll, setRunAll] = useState<boolean | null>(null);
   const [editRun, setEditRun] = useState(false);
+  // "Type input in the Output" has its own switch and user list, same as Run.
+  const [interAll, setInterAll] = useState<boolean | null>(null);
+  const [editInter, setEditInter] = useState(false);
 
   useEffect(() => {
-    readRunAllowAll().then(setRunAll).catch(() => setError("Couldn't load the run setting."));
+    readFeatureAllowAll("run").then(setRunAll).catch(() => setError("Couldn't load the run setting."));
+    readFeatureAllowAll("interactive").then(setInterAll).catch(() => setError("Couldn't load the input setting."));
   }, []);
 
-  async function changeRunAll(allow: boolean) {
+  async function changeFeatureAll(feature: Feature, allow: boolean) {
     setBusy(true);
     setError("");
     try {
-      await adminSetRunAllowAll(allow);
-      setRunAll(allow);
+      await adminSetFeatureAllowAll(feature, allow);
+      (feature === "run" ? setRunAll : setInterAll)(allow);
     } catch {
-      setError("Couldn't change the run setting.");
+      setError(feature === "run" ? "Couldn't change the run setting." : "Couldn't change the input setting.");
     } finally {
       setBusy(false);
     }
@@ -143,7 +147,7 @@ export default function AdminTab() {
 
       <div className="card">
         <h3>Sign-ups</h3>
-        <div className="switch-row" style={{ borderTop: 0, paddingBottom: 0 }}>
+        <div className="switch-row" style={{ borderTop: 0 }}>
           <div>
             <strong>Allow new accounts</strong>
             <span className="hint-text">
@@ -160,7 +164,7 @@ export default function AdminTab() {
       </div>
 
       <div className="card">
-        <h3>Running code</h3>
+        <h3>Running code &amp; input</h3>
         <div className="switch-row" style={{ borderTop: 0, paddingBottom: 0 }}>
           <div>
             <strong>Allow everyone to run code</strong>
@@ -173,7 +177,25 @@ export default function AdminTab() {
           <div className="switch-actions">
             <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditRun(true)} disabled={runAll === null} title="Choose who can run code">Edit</button>
             <label className="switch" title="Allow everyone to run code">
-              <input type="checkbox" checked={runAll !== false} disabled={busy || runAll === null} onChange={(e) => changeRunAll(e.target.checked)} aria-label="Allow everyone to run code" />
+              <input type="checkbox" checked={runAll !== false} disabled={busy || runAll === null} onChange={(e) => changeFeatureAll("run", e.target.checked)} aria-label="Allow everyone to run code" />
+              <i />
+            </label>
+          </div>
+        </div>
+
+        <div className="switch-row">
+          <div>
+            <strong>Allow everyone to type input in the Output</strong>
+            <span className="hint-text">
+              {interAll === false
+                ? "Off: only the users selected in Edit can type input in the Output. Everyone else gets the normal error, and can still use the Input tab."
+                : "On: when a program asks for input, anyone can type it right in the Output (each typed line costs one more run). Use Edit to choose who keeps it if you turn this off."}
+            </span>
+          </div>
+          <div className="switch-actions">
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditInter(true)} disabled={interAll === null} title="Choose who can type input in the Output">Edit</button>
+            <label className="switch" title="Allow everyone to type input in the Output">
+              <input type="checkbox" checked={interAll !== false} disabled={busy || interAll === null} onChange={(e) => changeFeatureAll("interactive", e.target.checked)} aria-label="Allow everyone to type input in the Output" />
               <i />
             </label>
           </div>
@@ -226,7 +248,8 @@ export default function AdminTab() {
         )}
       </div>
 
-      <RunAccessDialog open={editRun} users={users} allowAll={runAll !== false} onClose={() => setEditRun(false)} onSaved={load} />
+      <RunAccessDialog feature="run" open={editRun} users={users} allowAll={runAll !== false} onClose={() => setEditRun(false)} onSaved={load} />
+      <RunAccessDialog feature="interactive" open={editInter} users={users} allowAll={interAll !== false} onClose={() => setEditInter(false)} onSaved={load} />
       <ConfirmDialog open={confirmSafeOff} danger title="Turn safe mode off?" message="You will be able to edit and delete other users' code. Everything you change is real and can't be undone." confirmLabel="Turn off" busy={busy} onConfirm={() => changeSafeMode(false)} onCancel={() => setConfirmSafeOff(false)} />
       <ConfirmDialog open={!!toggleRole} title={toggleRole?.role === "admin" ? "Remove admin rights?" : "Make this user an admin?"} message={`@${toggleRole?.username} ${toggleRole?.role === "admin" ? "will lose" : "will gain"} access to the admin tools.`} confirmLabel="Confirm" busy={busy} onConfirm={doRole} onCancel={() => setToggleRole(null)} />
       <ConfirmDialog open={!!toDelete} danger title="Delete this account?" message={`@${toDelete?.username} and ALL of their code will be permanently deleted.`} confirmLabel="Delete forever" busy={busy} onConfirm={doDelete} onCancel={() => setToDelete(null)} />

@@ -109,11 +109,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---- settings/run ("Allow everyone to run code") and settings/contacts
+    // ---- settings/run ("Allow everyone to run code"), settings/interactive ("type input in the Output") and settings/contacts
     // (the Contact page). Readable by registered users only. Written ONLY by
     // the server (/api/admin/run-access and /api/admin/contacts use the Admin
     // SDK after checking the caller is an admin), so no client write rule.
     match /settings/run {
+      allow read: if isMember();
+      allow write: if false;
+    }
+    match /settings/interactive {
       allow read: if isMember();
       allow write: if false;
     }

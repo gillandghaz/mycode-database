@@ -57,6 +57,7 @@ Prinsip rancangan:
 ### Menjalankan kode
 - **Run** atau `Ctrl+Enter` mengompilasi dan menjalankan file yang sedang terbuka. **OOP lintas file:** class yang dipakai dari file lain (di folder yang sama atau subfoldernya) ikut diambil otomatis; lihat [Menjalankan beberapa file](#menjalankan-beberapa-file-oop-lintas-file).
 - Panel bergaya terminal: tab **Output** (stdout, stderr, kode keluar, durasi) dan tab **Input** (stdin untuk program ber-`Scanner`).
+- **Mengetik input langsung di Output:** bila program meminta input (`Scanner`) yang belum ada, Output menampilkan baris input tepat setelah prompt; tekan Enter dan program berlanjut. Lihat [Mengetik input saat program berjalan](#mengetik-input-saat-program-berjalan).
 
 ### Import & Export
 Tersedia di menu titik tiga Explorer.
@@ -69,6 +70,7 @@ Tersedia di menu titik tiga Explorer.
 - **Foto profil:** unggah dan ganti di Dashboard → Account (JPG/PNG/WebP, dipotong persegi dan dikecilkan ke 256×256 di browser). Foto tampil di menu profil. Sengaja tidak ada fitur hapus foto.
 - Dashboard: *Overview* (jumlah folder/file, ukuran kode, 5 file terakhir), *Account*, *Settings* (ukuran font, word wrap, kurangi animasi).
 - Panel admin: daftar pengguna (lengkap dengan foto profil di kolom User), buka workspace pengguna, ubah peran, hapus akun, dan **saklar buka/tutup pendaftaran** (ditegakkan di server). Tombol **Manage in Admin** di editor langsung membuka tab Admin (`/dashboard?tab=admin`).
+- **Izin mengetik input di Output:** saklar *Allow everyone to type input in the Output* di bawah saklar Run, dengan tombol **Edit** dan cara kerja yang sama. Saat dimatikan, hanya pengguna yang dipilih yang memakai baris input; yang lain mendapat galat biasa beserta petunjuk memakai tab **Input**, yang selalu bisa dipakai oleh semua orang.
 - **Izin menjalankan kode:** saklar *Allow everyone to run code*. Saat dimatikan, hanya pengguna yang dipilih lewat tombol **Edit** (di samping saklar) yang bisa Run; yang lain melihat pesan, dan server menolak permintaannya (`403 run-disabled`). Admin tidak dikecualikan otomatis.
 - **Menu Contact** (paling bawah di dashboard, tampilan mengikuti proyek Gramofon): semua pengguna melihat daftar kontak dan tautannya, dan perubahan admin langsung terlihat tanpa memuat ulang. Admin mengedit **per kontak** lewat ikon pensil di samping nama (popup berisi *Nama jenis kontak*, *Judul kontak* opsional, dan *Tautan / isi*, dengan tombol Hapus), menambah lewat **+ Tambah kontak**, dan mengubah teks **deskripsi**. Nama atau tautan yang kosong tampil sebagai “-”. Email, nomor telepon, dan domain tanpa skema (mis. `github.com/nama`) otomatis menjadi tautan; skema berbahaya seperti `javascript:` tidak pernah dijadikan tautan.
 - **Safe mode** admin: melihat kode pengguna lain boleh, mengubahnya hanya setelah safe mode dimatikan.
@@ -246,8 +248,10 @@ Firestore menyimpan kode dan metadata.
 | `fileContents/{id}` | isi kode (maksimal 200.000 karakter); id sama dengan node file |
 | `avatars/{uid}` | foto profil: `dataUrl` (JPEG, ≤ 120.000 karakter); pemilik bisa menambah/mengganti, tidak bisa menghapus |
 | `settings/run` | `allowAll` (false = hanya pengguna terpilih yang boleh Run); ditulis server saja |
+| `settings/interactive` | `allowAll` (false = hanya pengguna terpilih yang boleh mengetik input di Output); ditulis server saja |
 | `settings/contacts` | `items`: daftar `{ id, type, title, link }` (maks. 20) dan `description` (maks. 500 karakter); ditulis server saja |
 | `users/{uid}.runAllowed` | `true` = pengguna ini boleh Run saat `allowAll` mati; hanya diubah admin lewat server |
+| `users/{uid}.interactiveAllowed` | `true` = pengguna ini boleh mengetik input di Output saat `allowAll` fitur itu mati; hanya diubah admin lewat server |
 
 Aturan nama: username 3–20 karakter (`a-z 0-9 _`); nama file/folder maksimal 64 karakter; nama file harus pengenal Java yang sah berakhiran `.java` (nama file = nama class).
 
@@ -262,7 +266,7 @@ Semua endpoint memakai `POST` dengan header `Authorization: Bearer <Firebase ID 
 | `/api/auth/gate` | Pengguna | Menolak profil baru (dan menghapus akun Auth barunya) saat pendaftaran ditutup |
 | `/api/auth/session` | Pengguna | Validasi sesi (dipakai pemeriksaan berkala klien) |
 | `/api/run` | Pengguna (diizinkan Run) | Kompilasi dan jalankan file Java (opsional bersama file lain yang dirujuknya) |
-| `/api/admin/run-access` | Admin | Atur `allowAll` dan daftar pengguna yang boleh Run |
+| `/api/admin/run-access` | Admin | Atur `allowAll` dan daftar pengguna untuk fitur `run` (bawaan) atau `interactive` (kolom `feature`) |
 | `/api/admin/contacts` | Admin | Simpan daftar kontak (maks. 20; panjang dibatasi) |
 | `/api/admin/delete-user` | Admin, safe mode OFF | Hapus akun Authentication beserta seluruh datanya |
 
@@ -311,6 +315,35 @@ Layanan compiler hanya menerima **satu** sumber per permintaan dan menjalankanny
 - Class pertama di file yang dijalankan harus berisi `main`, sama seperti aturan `java File.java`.
 - *Compact source file* Java 25 (`void main()` tanpa class) tidak dirancang untuk digabung dengan class lain.
 - Hanya `stderr` yang dipetakan ulang nomor barisnya; keluaran biasa program tidak pernah diubah.
+
+---
+
+## Mengetik input saat program berjalan
+
+Layanan compiler menerima seluruh stdin **bersama** permintaan run, jadi sebuah program tidak bisa benar-benar berhenti menunggu ketikan (layanan ini memang tidak punya mode interaktif). Pengalaman interaktifnya ditiru dengan **pengulangan (replay)**:
+
+1. Program dijalankan. Jika ia berhenti **hanya karena `Scanner` kehabisan input** (`java.util.NoSuchElementException` dari `Scanner`), terminal menampilkan output sampai titik itu dan sebuah baris input tepat setelah prompt. Galat itu sendiri tidak ditampilkan.
+2. Saat Anda menekan **Enter**, baris itu ditambahkan ke input, program dijalankan lagi **dari awal** dengan semua input yang sudah diketik, dan terminal hanya menambahkan output yang baru. Hasilnya seperti sesi terminal sungguhan:
+
+```text
+Masukkan nama anda: Budi
+Masukkan usia anda: 20
+Halo Budi, usia 20
+✓ exited with code 0
+```
+
+3. Siklus berulang sampai program selesai. **Esc** menghentikan penantian; tombol **Run** memulai sesi baru; **Clear** membersihkan terminal dan menutup sesi.
+
+Isi tab **Input** dipakai lebih dulu; baris input hanya muncul untuk input yang masih kurang (isi tab Input tidak diketik ulang, sehingga tidak ditampilkan di Output).
+
+**Pengaturan admin:** fitur ini punya saklar sendiri di Dashboard → Admin → *Running code & input* (dengan tombol **Edit** untuk memilih pengguna yang tetap boleh memakainya saat saklar mati). Saat mati untuk seorang pengguna, program yang meminta input menampilkan galat biasa plus petunjuk memakai tab **Input**. Ini pengaturan antarmuka editor, **bukan batas keamanan**: tab Input mengirim stdin yang sama dan selalu berfungsi. Hanya izin **Run** yang juga ditegakkan di server.
+
+**Konsekuensi yang perlu diketahui:**
+- **Setiap baris yang diketik = satu run lagi** (kuota onlinecompiler.io berkurang satu per baris). Sesi dibatasi 50 baris.
+- Program harus **berperilaku sama setiap kali dijalankan**. Bila ia memakai angka acak atau waktu sehingga keluarannya berbeda antar-run, terminal menampilkan catatan dan keluaran penuh.
+- Hanya **`Scanner`** yang dikenali. `BufferedReader.readLine()` mengembalikan `null` saat input habis sehingga tampak sebagai `NullPointerException` biasa; untuk itu isi tab **Input** terlebih dulu.
+- `Scanner` yang membaca dari String (bukan `System.in`) menghasilkan tanda yang sama, sehingga program seperti itu akan ikut meminta input; tekan Esc untuk menghentikannya.
+- Tiap langkah memerlukan satu permintaan jaringan (sekitar 1 detik), jadi jeda antar-prompt terasa.
 
 ---
 

@@ -22,6 +22,9 @@ export interface UserProfile {
   // Set by admins (/api/admin/run-access). Only matters while "Allow everyone
   // to run code" is off: true = this user may still run code.
   runAllowed?: boolean;
+  // Same idea for "type program input in the Output": true = this user may
+  // still use it while that switch is off.
+  interactiveAllowed?: boolean;
 }
 
 // ---- sign-up in progress ---------------------------------------------------
