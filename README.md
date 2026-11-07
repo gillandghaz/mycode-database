@@ -332,9 +332,11 @@ Halo Budi, usia 20
 ✓ exited with code 0
 ```
 
-3. Siklus berulang sampai program selesai. **Esc** atau tombol **✕** di samping baris input menghentikan penantian; tombol **Run** memulai sesi baru; **Clear** membersihkan terminal dan menutup sesi.
+3. Siklus berulang sampai program selesai. **Esc** (papan ketik fisik) menghentikan penantian; tombol **Run** memulai sesi baru; **Clear** membersihkan terminal dan menutup sesi.
 
-**Mengirim input:** tekan **Enter**, tombol kirim di keyboard, atau tombol **↵** di samping baris input. Baris input adalah formulir biasa, sehingga bekerja juga di keyboard virtual Android dan iOS yang tidak melaporkan tombol Enter dengan benar. Setiap langkah butuh satu–beberapa detik; **baris yang Anda ketik saat langkah sebelumnya masih berjalan tidak hilang**: ia masuk antrean (header menampilkan "N queued") dan dikirim otomatis, berurutan, begitu langkah itu selesai. Bila layanan menjawab 429 (sibuk), langkah yang sama dicoba lagi otomatis hingga 2 kali. Bila mengetik tidak mengubah apa pun (keluaran dan posisi galat sama), terminal menampilkan satu catatan agar tidak tampak membeku.
+**Mengirim input:** tekan **Enter** atau tombol Send/Go di keyboard virtual. Baris input adalah formulir biasa, sehingga bekerja juga di keyboard Android dan iOS yang tidak melaporkan tombol Enter dengan benar; tidak ada tombol tambahan di samping field.
+
+**Selama langkah diproses, field input tidak terlihat dan terkunci** (tidak bisa diketik, dan Enter diabaikan). Jawaban Anda tetap tampil di terminal; field muncul kembali, dan langsung terfokus, hanya setelah program meminta input berikutnya. Field tidak dihapus dari halaman melainkan disembunyikan, supaya keyboard ponsel tidak menutup lalu terbuka lagi di antara prompt. Bila layanan menjawab 429 (sibuk), langkah yang sama dicoba lagi otomatis hingga 2 kali. Bila mengetik tidak mengubah apa pun (keluaran dan posisi galat sama), terminal menampilkan satu catatan agar tidak tampak membeku.
 
 Isi tab **Input** dipakai lebih dulu; baris input hanya muncul untuk input yang masih kurang (isi tab Input tidak diketik ulang, sehingga tidak ditampilkan di Output).
 

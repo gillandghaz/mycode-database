@@ -410,8 +410,5 @@ p, li, h1, h2, h3, h4, label, summary, .hint-text, .error-text, .ok-text, .desc,
 .term__input { display: inline-block; box-sizing: border-box; width: 12ch; min-width: 8ch; max-width: 100%; height: 1.5em; line-height: 1.5; background: transparent; border: 0; border-bottom: 1px solid var(--accent); border-radius: 0; color: var(--accent); caret-color: var(--accent); font: inherit; padding: 0 2px; margin: 0; outline: none; vertical-align: baseline; }
 
 .term__form { display: inline; margin: 0; padding: 0; }
-.term__send, .term__stop { background: transparent; border: 0; padding: 0 6px; margin: 0; font: inherit; line-height: inherit; cursor: pointer; vertical-align: baseline; }
-.term__send { color: var(--accent); font-weight: 700; }
-.term__stop { color: var(--text-3); }
-.term__send:disabled { opacity: .4; cursor: default; }
-@media (pointer: coarse) { .term__send, .term__stop { padding: 6px 12px; } }
+/* while the previous line is being run: no field to see, nothing to type into */
+.term__input.is-busy { position: absolute; width: 1px; min-width: 0; height: 1px; padding: 0; border: 0; opacity: 0; overflow: hidden; pointer-events: none; }

@@ -401,16 +401,12 @@ export default function Ide() {
   // (See lib/interactive-input.ts.)
   const sessionRef = useRef<RunSession | null>(null);
   const [awaitingInput, setAwaitingInput] = useState(false);
-  // Lines typed while a run is still going (it takes a second or more per step)
-  // wait here and are sent, in order, as soon as the run finishes. Nothing typed is lost.
+  // True while a run is going: the terminal's input is hidden and locked then
+  // (see Terminal), and a line can't be sent until the program asks again.
   const busyRef = useRef(false);
-  const queueRef = useRef<string[]>([]);
-  const [queuedCount, setQueuedCount] = useState(0);
 
   function endSession() {
     sessionRef.current = null;
-    queueRef.current = [];
-    setQueuedCount(0);
     setAwaitingInput(false);
   }
 
@@ -530,7 +526,6 @@ export default function Ide() {
       busyRef.current = false;
       setRunning(false);
     }
-    await drainQueue();
   }
 
   // Runs one typed line (one more run of the program).
@@ -553,30 +548,11 @@ export default function Ide() {
     }
   }
 
-  // Sends what was typed while the previous run was still going, one after another.
-  async function drainQueue() {
-    while (sessionRef.current && queueRef.current.length > 0 && !busyRef.current) {
-      const next = queueRef.current.shift()!;
-      setQueuedCount(queueRef.current.length);
-      await sendLine(sessionRef.current, next);
-    }
-    if (!sessionRef.current) {
-      queueRef.current = []; // the program ended: anything still queued has nobody to read it
-      setQueuedCount(0);
-    }
-  }
-
   // Enter in the terminal's input line.
   async function submitInput(line: string) {
     const s = sessionRef.current;
-    if (!s) return;
-    if (busyRef.current) {
-      queueRef.current.push(line);
-      setQueuedCount(queueRef.current.length);
-      return;
-    }
+    if (!s || busyRef.current) return; // nothing is waiting for input right now
     await sendLine(s, line);
-    await drainQueue();
   }
 
   // Esc in the input line: stop waiting.
@@ -726,7 +702,7 @@ export default function Ide() {
             )}
           </div>
 
-          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => { setLines([]); endSession(); }} awaiting={awaitingInput} queued={queuedCount} onSubmitInput={submitInput} onCancelInput={cancelInput} />
+          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => { setLines([]); endSession(); }} awaiting={awaitingInput} onSubmitInput={submitInput} onCancelInput={cancelInput} />
         </main>
       </div>
 
