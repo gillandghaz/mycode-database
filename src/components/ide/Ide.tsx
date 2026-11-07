@@ -56,6 +56,9 @@ interface RunSession {
   baseStdin: string; // the Input tab
   typed: string[]; // lines typed in the terminal so far
   prevStdout: string; // output of the previous run, to show only what is new
+  prevTrace: string; // the error of the previous run, to notice when typing changed nothing
+  skipLeadingSpace: boolean; // we added a space after a trimmed prompt; drop the one the next output starts with
+  warnedStuck: boolean;
 }
 
 export default function Ide() {
@@ -398,9 +401,16 @@ export default function Ide() {
   // (See lib/interactive-input.ts.)
   const sessionRef = useRef<RunSession | null>(null);
   const [awaitingInput, setAwaitingInput] = useState(false);
+  // Lines typed while a run is still going (it takes a second or more per step)
+  // wait here and are sent, in order, as soon as the run finishes. Nothing typed is lost.
+  const busyRef = useRef(false);
+  const queueRef = useRef<string[]>([]);
+  const [queuedCount, setQueuedCount] = useState(0);
 
   function endSession() {
     sessionRef.current = null;
+    queueRef.current = [];
+    setQueuedCount(0);
     setAwaitingInput(false);
   }
 
@@ -408,12 +418,19 @@ export default function Ide() {
   // the next line or finishes (and ends the session).
   async function runStep(s: RunSession) {
     const token = await auth.currentUser!.getIdToken();
-    const res = await fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ language: "java", fileName: s.fileName, code: s.code, stdin: composeStdin(s.baseStdin, s.typed), files: s.files }),
-    });
-    const body = await res.json().catch(() => ({}));
+    const payload = JSON.stringify({ language: "java", fileName: s.fileName, code: s.code, stdin: composeStdin(s.baseStdin, s.typed), files: s.files });
+    let res: Response;
+    let body: any;
+    // The compiler service answers 429 when runs arrive in a quick burst, which
+    // typing line after line can cause. Wait a moment and try the same step again.
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: payload });
+      body = await res.json().catch(() => ({}));
+      if (res.status !== 429 || attempt >= 2) break;
+      setLines((l) => [...l, { kind: "dim", text: "(the compiler is busy, trying again…)" }]);
+      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+    if (sessionRef.current !== s) return; // stopped (Esc / Clear) or replaced by a new Run while this one was running
     if (res.status === 503 && body.code === "runner-unavailable") {
       setLines((l) => [...l, { kind: "dim", text: "The Java runner isn't connected yet." }]);
       setNotAvailable(true);
@@ -432,6 +449,8 @@ export default function Ide() {
       if (stdout.startsWith(s.prevStdout)) delta = stdout.slice(s.prevStdout.length);
       else setLines((l) => [...l, { kind: "dim", text: "(the output changed between runs, so the program doesn't behave the same every time; showing it in full)" }]);
     }
+    if (s.skipLeadingSpace && delta.startsWith(" ")) delta = delta.slice(1);
+    s.skipLeadingSpace = false;
     s.prevStdout = stdout;
 
     const wantsInput = needsMoreInput({ exitCode: r.exitCode, stderr: r.stderr ?? "" });
@@ -440,6 +459,14 @@ export default function Ide() {
       if (delta) out.push({ kind: "out", text: delta, inline: true });
       const otherErr = withoutInputError(r.stderr ?? "");
       if (otherErr) out.push({ kind: "err", text: otherErr });
+      // Typing changed nothing (same output, same place in the code): say so once,
+      // instead of leaving the terminal looking frozen.
+      const trace = (r.stderr ?? "").split("\n").slice(0, 4).join("\n");
+      if (s.typed.length > 0 && !delta && trace === s.prevTrace && !s.warnedStuck) {
+        s.warnedStuck = true;
+        out.push({ kind: "dim", text: "(still waiting at the same place; if this keeps happening, put the input in the Input tab)" });
+      }
+      s.prevTrace = trace;
       if (out.length) setLines((l) => [...l, ...out]);
       setAwaitingInput(true);
       return;
@@ -467,6 +494,7 @@ export default function Ide() {
     const id = activeNode.id;
     setTermTab("output");
     await flushFile(id);
+    busyRef.current = true;
     setRunning(true);
     setLines((l) => [...l, { kind: "cmd", text: `$ run ${activeNode.name}` }]);
     try {
@@ -492,23 +520,27 @@ export default function Ide() {
       }
       if (files.length > 0) setLines((l) => [...l, { kind: "dim", text: `using ${files.map((f) => f.name).join(", ")}` }]);
 
-      const session: RunSession = { fileName: activeNode.name, code: entryCode, files, baseStdin: stdin, typed: [], prevStdout: "" };
+      const session: RunSession = { fileName: activeNode.name, code: entryCode, files, baseStdin: stdin, typed: [], prevStdout: "", prevTrace: "", skipLeadingSpace: false, warnedStuck: false };
       sessionRef.current = session;
       await runStep(session);
     } catch {
       setLines((l) => [...l, { kind: "err", text: "Couldn't reach the server. Check your connection." }]);
       endSession();
     } finally {
+      busyRef.current = false;
       setRunning(false);
     }
+    await drainQueue();
   }
 
-  // Enter in the terminal's input line.
-  async function submitInput(line: string) {
-    const s = sessionRef.current;
-    if (!s || running) return;
+  // Runs one typed line (one more run of the program).
+  async function sendLine(s: RunSession, line: string) {
     s.typed.push(line);
-    setLines((l) => [...l, { kind: "stdin", text: line + "\n", inline: true }]);
+    // If the prompt ended without a space (some services trim output), keep the answer apart from it.
+    const gap = s.prevStdout && !/\s$/.test(s.prevStdout) ? " " : "";
+    s.skipLeadingSpace = gap !== "";
+    setLines((l) => [...l, { kind: "stdin", text: gap + line + "\n", inline: true }]);
+    busyRef.current = true;
     setRunning(true);
     try {
       await runStep(s);
@@ -516,8 +548,35 @@ export default function Ide() {
       setLines((l) => [...l, { kind: "err", text: "Couldn't reach the server. Check your connection." }]);
       endSession();
     } finally {
+      busyRef.current = false;
       setRunning(false);
     }
+  }
+
+  // Sends what was typed while the previous run was still going, one after another.
+  async function drainQueue() {
+    while (sessionRef.current && queueRef.current.length > 0 && !busyRef.current) {
+      const next = queueRef.current.shift()!;
+      setQueuedCount(queueRef.current.length);
+      await sendLine(sessionRef.current, next);
+    }
+    if (!sessionRef.current) {
+      queueRef.current = []; // the program ended: anything still queued has nobody to read it
+      setQueuedCount(0);
+    }
+  }
+
+  // Enter in the terminal's input line.
+  async function submitInput(line: string) {
+    const s = sessionRef.current;
+    if (!s) return;
+    if (busyRef.current) {
+      queueRef.current.push(line);
+      setQueuedCount(queueRef.current.length);
+      return;
+    }
+    await sendLine(s, line);
+    await drainQueue();
   }
 
   // Esc in the input line: stop waiting.
@@ -667,7 +726,7 @@ export default function Ide() {
             )}
           </div>
 
-          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => { setLines([]); endSession(); }} awaiting={awaitingInput} onSubmitInput={submitInput} onCancelInput={cancelInput} />
+          <Terminal lines={lines} stdin={stdin} running={running} tab={termTab} onTab={setTermTab} onStdin={setStdin} onClear={() => { setLines([]); endSession(); }} awaiting={awaitingInput} queued={queuedCount} onSubmitInput={submitInput} onCancelInput={cancelInput} />
         </main>
       </div>
 
