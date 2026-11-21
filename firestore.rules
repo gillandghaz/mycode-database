@@ -53,7 +53,12 @@ service cloud.firestore {
         && request.resource.data.role == "user"
         && validUsername(request.resource.data.username)
         && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() <= 40;
+        && request.resource.data.displayName.size() <= 40
+        // The email must be the account's own, and the username must be
+        // reserved by this same account in the same transaction (getAfter):
+        // blocks a profile that borrows someone else's username or email.
+        && request.resource.data.get('email', null) == request.auth.token.get('email', null)
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == request.auth.uid;
 
       // Users may change only their display name and editor settings.
       allow update: if isSignedIn()
@@ -176,13 +181,24 @@ service cloud.firestore {
         && d.content is string && d.content.size() <= 200000;
     }
 
+    // Content belongs to the FILE node with the same id and the same owner.
+    // The app always writes the node in the same batch (create, import, save),
+    // so getAfter sees it. Without this, anyone could create fileContents/{id}
+    // for another user's file id first and lock them out of saving it.
+    function matchesNode(nodeId, d) {
+      return getAfter(/databases/$(database)/documents/nodes/$(nodeId)).data.ownerUid == d.ownerUid
+        && getAfter(/databases/$(database)/documents/nodes/$(nodeId)).data.type == 'file';
+    }
+
     match /fileContents/{nodeId} {
       allow read: if isMember() && (resource.data.ownerUid == request.auth.uid || isAdmin());
 
       allow create: if isMember() && validContent(request.resource.data)
+        && matchesNode(nodeId, request.resource.data)
         && (request.resource.data.ownerUid == request.auth.uid || adminCanWrite());
 
       allow update: if isMember() && validContent(request.resource.data)
+        && matchesNode(nodeId, request.resource.data)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && (resource.data.ownerUid == request.auth.uid || adminCanWrite());
 

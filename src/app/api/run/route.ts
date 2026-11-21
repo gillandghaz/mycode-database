@@ -3,6 +3,7 @@ import { requireUser, readJson, errorResponse, canUserRun, HttpError } from "@/l
 import { getRunner } from "@/lib/runner";
 import { RunnerError, RunnerUnavailableError, type RunRequest } from "@/lib/runner/types";
 import { bundleJava, remapDiagnostics, MAX_BUNDLE_CHARS, MAX_BUNDLE_FILES } from "@/lib/java-bundle";
+import { enforceRunRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 30;
 
@@ -60,9 +61,16 @@ export async function POST(request: Request) {
     try {
       runner = getRunner();
     } catch (e) {
-      if (e instanceof RunnerUnavailableError) throw new HttpError(503, e.message, "runner-unavailable");
+      // Configuration details (which env var is missing) stay in the server log.
+      if (e instanceof RunnerUnavailableError) {
+        console.error("run: runner unavailable:", e.message);
+        throw new HttpError(503, "Code runner is not available yet.", "runner-unavailable");
+      }
       throw e;
     }
+
+    // Counted only for valid requests that would reach the compiler service.
+    await enforceRunRateLimit(decoded.uid);
 
     const req: RunRequest = { language, fileName, code: finalCode, stdin };
     try {
