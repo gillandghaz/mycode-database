@@ -30,6 +30,7 @@ import { IconFilePlus, IconFolderPlus, IconMenu, IconPlay, IconClose, IconLock, 
 import FileTree, { type TreeAction } from "./FileTree";
 import Terminal, { type TermLine } from "./Terminal";
 import { MoveDialog, NodeDialog, type DialogState } from "./NodeDialogs";
+import { useEditorKeyboard } from "./useEditorKeyboard";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -405,6 +406,11 @@ export default function Ide() {
   // (see Terminal), and a line can't be sent until the program asks again.
   const busyRef = useRef(false);
 
+  // Phone keyboard open for the editor: the terminal stays behind it instead
+  // of riding up and covering the code (see useEditorKeyboard).
+  const ideRef = useRef<HTMLDivElement>(null);
+  const editorKeyboard = useEditorKeyboard(ideRef);
+
   function endSession() {
     sessionRef.current = null;
     setAwaitingInput(false);
@@ -422,7 +428,8 @@ export default function Ide() {
     for (let attempt = 0; ; attempt++) {
       res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: payload });
       body = await res.json().catch(() => ({}));
-      if (res.status !== 429 || attempt >= 2) break;
+      // Our own per-user limit ("rate-limited") won't clear in seconds: don't retry it.
+      if (res.status !== 429 || body?.code === "rate-limited" || attempt >= 2) break;
       setLines((l) => [...l, { kind: "dim", text: "(the compiler is busy, trying again…)" }]);
       await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
     }
@@ -586,7 +593,11 @@ export default function Ide() {
   const dirty = (id: string) => !readOnly && buffers[id] !== undefined && buffers[id] !== saved.current[id];
 
   return (
-    <div className="ide">
+    <div
+      ref={ideRef}
+      className={"ide" + (editorKeyboard.open ? " ide--kbd" : "")}
+      style={editorKeyboard.open ? ({ "--ide-vvh": `${editorKeyboard.height}px` } as React.CSSProperties) : undefined}
+    >
       <header className="topbar">
         <button className="icon-btn sidebar-toggle" aria-label="Toggle file explorer" onClick={() => setSidebarOpen((v) => !v)}><IconMenu size={20} /></button>
         <TopbarBrand />

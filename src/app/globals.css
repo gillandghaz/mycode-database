@@ -412,3 +412,9 @@ p, li, h1, h2, h3, h4, label, summary, .hint-text, .error-text, .ok-text, .desc,
 .term__form { display: inline; margin: 0; padding: 0; }
 /* while the previous line is being run: no field to see, nothing to type into */
 .term__input.is-busy { position: absolute; width: 1px; min-width: 0; height: 1px; padding: 0; border: 0; opacity: 0; overflow: hidden; pointer-events: none; }
+
+/* Phone keyboard open for the code editor (see components/ide/useEditorKeyboard.ts):
+   the IDE fits the visible area above the keyboard and the terminal stays in
+   its place behind the keyboard instead of riding up over the code. */
+.ide.ide--kbd { height: var(--ide-vvh, 100dvh); }
+.ide--kbd .term { display: none; }
