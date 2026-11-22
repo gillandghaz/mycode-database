@@ -94,8 +94,16 @@ service cloud.firestore {
     // ---- usernames/{username}: guarantees unique usernames
     match /usernames/{username} {
       allow read: if true;
+      // A regular user may reserve a username ONLY while creating their own
+      // profile in the same transaction (see createUserProfile in
+      // lib/profile.ts): no profile exists before the write, and the profile
+      // being created uses THIS username. Without that, one Auth account
+      // (even one with no profile) could reserve unlimited usernames and
+      // lock those names away from everyone else.
       allow create: if username.matches('^[a-z0-9_]{3,20}$')
-        && ((isSignedIn() && registrationOpen() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid)
+        && ((isSignedIn() && registrationOpen() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid
+              && !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == username)
             || isAdmin());
       allow delete: if isAdmin();
       allow update: if false;
